@@ -41,18 +41,28 @@ jobs:
           cache: npm
           cache-dependency-path: dashboard/package-lock.json
 
-      # 1. Build dashboard (same public client values as the release workflow;
-      #    they are inlined as fallbacks and overridden by the local server's
-      #    runtime config at runtime).
+      # 1. Build dashboard. Like the Windows LAN bundle, the desktop client bakes
+      #    the NAS backend so a fresh install can never silently fall back to the
+      #    official cloud instance. The local server's /api/runtime-config.js
+      #    (from ~/.tokentracker/tracker/config.json) still overrides this.
       - name: Install dashboard dependencies
         run: npm ci --prefix dashboard --no-audit --no-fund
 
       - name: Build dashboard
         env:
-          VITE_INSFORGE_BASE_URL: https://srctyff5.us-east.insforge.app
+          VITE_INSFORGE_BASE_URL: http://192.168.0.126:7130
           VITE_INSFORGE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3OC0xMjM0LTU2NzgtOTBhYi1jZGVmMTIzNDU2NzgiLCJlbWFpbCI6ImFub25AaW5zZm9yZ2UuY29tIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExNDU5NDd9.T0auta_IrVIh0uXW1bob5QSnzvsnJmN28r5XkSGEuQY
+          VITE_TOKENTRACKER_ALLOW_PRIVATE_HTTP: "1"
           VITE_SENTRY_DSN: ${{ secrets.VITE_SENTRY_DSN }}
         run: npm run dashboard:build
+
+      - name: Verify dashboard targets the NAS
+        run: |
+          if ! grep -rq "192.168.0.126:7130" dashboard/dist/assets; then
+            echo "::error::dashboard build did not bake the NAS base URL"
+            exit 1
+          fi
+          echo "✓ dashboard bakes the NAS base URL"
 
       # 2. Bundle EmbeddedServer (Node.js + tokentracker source) for arm64 only.
       - name: Bundle EmbeddedServer (arm64)
@@ -155,8 +165,8 @@ jobs:
           APP_PATH="$(find build/DerivedData/Build/Products/Release -name 'TokenTracker.app' -maxdepth 1)"
           mkdir -p dist
           ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" \
-            "dist/TokenTracker-${VERSION}-arm64-macos.zip"
-          cp build/TokenTrackerBar.dmg "dist/TokenTracker-${VERSION}-arm64-macos.dmg"
+            "dist/TokenTracker-${VERSION}-arm64-nas-macos.zip"
+          cp build/TokenTrackerBar.dmg "dist/TokenTracker-${VERSION}-arm64-nas-macos.dmg"
           (cd dist && shasum -a 256 ./* > SHA256SUMS.txt)
           ls -lh dist
 
