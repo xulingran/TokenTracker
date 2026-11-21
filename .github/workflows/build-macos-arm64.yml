@@ -51,18 +51,22 @@ jobs:
       - name: Build dashboard
         env:
           VITE_INSFORGE_BASE_URL: http://192.168.0.126:7130
-          VITE_INSFORGE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3OC0xMjM0LTU2NzgtOTBhYi1jZGVmMTIzNDU2NzgiLCJlbWFpbCI6ImFub25AaW5zZm9yZ2UuY29tIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExNDU5NDd9.T0auta_IrVIh0uXW1bob5QSnzvsnJmN28r5XkSGEuQY
+          # Public anon key of the NAS InsForge instance (same value the Windows
+          # LAN bundle bakes; browser bundles ship it by design).
+          VITE_INSFORGE_ANON_KEY: anon_77f57beee06931de3bc457f4e789c368f62ea662
           VITE_TOKENTRACKER_ALLOW_PRIVATE_HTTP: "1"
           VITE_SENTRY_DSN: ${{ secrets.VITE_SENTRY_DSN }}
         run: npm run dashboard:build
 
       - name: Verify dashboard targets the NAS
         run: |
-          if ! grep -rq "192.168.0.126:7130" dashboard/dist/assets; then
-            echo "::error::dashboard build did not bake the NAS base URL"
-            exit 1
-          fi
-          echo "✓ dashboard bakes the NAS base URL"
+          for needle in "192.168.0.126:7130" "anon_77f57beee06931de3bc457f4e789c368f62ea662"; do
+            if ! grep -rq "$needle" dashboard/dist/assets; then
+              echo "::error::dashboard build did not bake $needle"
+              exit 1
+            fi
+          done
+          echo "✓ dashboard bakes the NAS base URL and anon key"
 
       # 2. Bundle EmbeddedServer (Node.js + tokentracker source) for arm64 only.
       - name: Bundle EmbeddedServer (arm64)
