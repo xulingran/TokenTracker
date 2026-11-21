@@ -13,6 +13,16 @@ enum AutoUpdatePolicy {
     static let enabledKey = "UpdateChecker.autoUpdateEnabled"
 
     static func isEnabled(_ defaults: UserDefaults = .standard) -> Bool {
-        defaults.object(forKey: enabledKey) as? Bool ?? true
+        if let stored = defaults.object(forKey: enabledKey) as? Bool {
+            return stored
+        }
+        #if TOKENTRACKER_DISABLE_AUTOUPDATE
+        // LAN / self-hosted builds point at a private backend. A silent update
+        // to the official GitHub DMG would replace them with a cloud build, so
+        // launch-time auto-update stays off unless the user opts in.
+        return false
+        #else
+        return true
+        #endif
     }
 }

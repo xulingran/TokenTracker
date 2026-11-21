@@ -1,0 +1,166 @@
+name: build (macOS arm64 artifact)
+
+# Build-only counterpart to release-dmg.yml: produces a self-contained
+# TokenTracker.app for Apple Silicon plus a DMG and an app zip, uploaded as
+# workflow artifacts. It never creates tags, releases, or npm publishes.
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Git ref to build (branch/tag/SHA; default: the dispatched ref)"
+        required: false
+        type: string
+
+concurrency:
+  group: build-macos-arm64-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-26
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+          persist-credentials: false
+
+      - name: Show source
+        run: |
+          git rev-parse --short HEAD
+          node -p "require('./package.json').version"
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: dashboard/package-lock.json
+
+      # 1. Build dashboard (same public client values as the release workflow;
+      #    they are inlined as fallbacks and overridden by the local server's
+      #    runtime config at runtime).
+      - name: Install dashboard dependencies
+        run: npm ci --prefix dashboard --no-audit --no-fund
+
+      - name: Build dashboard
+        env:
+          VITE_INSFORGE_BASE_URL: https://srctyff5.us-east.insforge.app
+          VITE_INSFORGE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3OC0xMjM0LTU2NzgtOTBhYi1jZGVmMTIzNDU2NzgiLCJlbWFpbCI6ImFub25AaW5zZm9yZ2UuY29tIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExNDU5NDd9.T0auta_IrVIh0uXW1bob5QSnzvsnJmN28r5XkSGEuQY
+          VITE_SENTRY_DSN: ${{ secrets.VITE_SENTRY_DSN }}
+        run: npm run dashboard:build
+
+      # 2. Bundle EmbeddedServer (Node.js + tokentracker source) for arm64 only.
+      - name: Bundle EmbeddedServer (arm64)
+        run: bash TokenTrackerBar/scripts/bundle-node.sh --arch arm64
+
+      # 3. Generate Xcode project.
+      - name: Install xcodegen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        working-directory: TokenTrackerBar
+        run: |
+          xcodegen generate
+          ruby scripts/patch-pbxproj-icon.rb
+
+      # 4. Build the app for Apple Silicon. TOKENTRACKER_DISABLE_AUTOUPDATE
+      #    keeps launch-time auto-update off by default in this build: the
+      #    official DMG would silently replace a LAN/NAS build.
+      - name: Build arm64 app
+        working-directory: TokenTrackerBar
+        run: |
+          xcodebuild \
+            -scheme TokenTrackerBar \
+            -configuration Release \
+            -derivedDataPath build/DerivedData \
+            ARCHS="arm64" \
+            ONLY_ACTIVE_ARCH=NO \
+            CODE_SIGN_IDENTITY="-" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            OTHER_SWIFT_FLAGS="\$(inherited) -Xfrontend -solver-expression-time-threshold=120 -DTOKENTRACKER_DISABLE_AUTOUPDATE" \
+            clean build
+
+          APP_PATH="$(find build/DerivedData/Build/Products/Release -name 'TokenTracker.app' -maxdepth 1)"
+          APP_BIN="$APP_PATH/Contents/MacOS/TokenTracker"
+          echo "Built binary: $APP_BIN"
+          lipo -info "$APP_BIN"
+          if ! lipo -info "$APP_BIN" | grep -q "arm64"; then
+            echo "::error::Binary is not arm64"
+            exit 1
+          fi
+
+          # The bundled runtime must actually run on this (arm64) runner.
+          EMBED="$APP_PATH/Contents/Resources/EmbeddedServer"
+          test -x "$EMBED/node"
+          "$EMBED/node" -p "process.versions.node"
+          "$EMBED/node" "$EMBED/tokentracker/bin/tracker.js" -v
+
+      # 5. Ad-hoc sign, inner-to-outer, exactly like release-dmg.yml. Without
+      #    this Gatekeeper reports a quarantined download as "damaged".
+      - name: Ad-hoc sign app
+        working-directory: TokenTrackerBar
+        run: |
+          APP_PATH="$(find build/DerivedData/Build/Products/Release -name 'TokenTracker.app' -maxdepth 1)"
+          APPEX_PATH="$APP_PATH/Contents/PlugIns/TokenTrackerWidget.appex"
+          echo "Signing: $APP_PATH"
+
+          find "$APP_PATH/Contents/Resources/EmbeddedServer" -type f \
+            \( -name 'node' -o -name '*.dylib' -o -name '*.so' -o -name '*.node' \) \
+            -exec codesign --force --timestamp=none --sign - {} \;
+
+          if [ -d "$APPEX_PATH" ]; then
+            echo "Signing widget extension: $APPEX_PATH"
+            codesign --force --timestamp=none \
+              --entitlements TokenTrackerWidget/TokenTrackerWidget.entitlements \
+              --sign - "$APPEX_PATH"
+          else
+            echo "::warning::Widget extension not found at $APPEX_PATH"
+          fi
+
+          codesign --force --timestamp=none \
+            --entitlements TokenTrackerBar/TokenTrackerBar.entitlements \
+            --sign - "$APP_PATH"
+
+          codesign --verify --verbose=2 "$APP_PATH"
+          codesign -dv --verbose=2 "$APP_PATH" 2>&1 | head -8
+
+          if [ -d "$APPEX_PATH" ]; then
+            codesign -d --entitlements - "$APPEX_PATH" 2>&1 | tee /tmp/appex-ents.txt
+            if ! grep -q "com.apple.security.app-sandbox" /tmp/appex-ents.txt; then
+              echo "::error::Widget extension lost com.apple.security.app-sandbox"
+              exit 1
+            fi
+          fi
+
+      # 6. DMG (Homebrew create-dmg, headless) + zip of the .app.
+      - name: Install create-dmg
+        run: brew install create-dmg
+
+      - name: Create DMG
+        working-directory: TokenTrackerBar
+        run: |
+          APP_PATH="$(find build/DerivedData/Build/Products/Release -name 'TokenTracker.app' -maxdepth 1)"
+          CI=true bash scripts/create-dmg.sh "$APP_PATH"
+
+      - name: Package artifacts
+        working-directory: TokenTrackerBar
+        run: |
+          VERSION="$(node -p "require('../package.json').version")"
+          APP_PATH="$(find build/DerivedData/Build/Products/Release -name 'TokenTracker.app' -maxdepth 1)"
+          mkdir -p dist
+          ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" \
+            "dist/TokenTracker-${VERSION}-arm64-macos.zip"
+          cp build/TokenTrackerBar.dmg "dist/TokenTracker-${VERSION}-arm64-macos.dmg"
+          (cd dist && shasum -a 256 ./* > SHA256SUMS.txt)
+          ls -lh dist
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: TokenTracker-macos-arm64-${{ github.run_number }}
+          path: TokenTrackerBar/dist/*
+          if-no-files-found: error
+          retention-days: 30
