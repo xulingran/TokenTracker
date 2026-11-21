@@ -500,7 +500,7 @@
   "settings.appearance.currency.opt.jpy": "日本円 (¥)",
   "settings.appearance.currency.opt.hkd": "香港ドル (HK$)",
   "settings.appearance.currency.rate_source.default": "組み込みのデフォルト為替レート",
-  "settings.appearance.currency.rate_source.fetched": "データソース：open.er-api.com",
+  "settings.appearance.currency.rate_source.fetched": "データソース：Currency API（npmmirror）",
   "settings.appearance.currency.rate_updated": "{{when}} に更新",
   "settings.appearance.currency.rate_never": "まだ更新されていません",
   "qpd.card.title": "開発費用対効果とPRコスト",

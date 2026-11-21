@@ -58,7 +58,11 @@ API 和管理入口通过 HTTPS 代理与访问控制提供服务，不直接对
 ```dotenv
 VITE_INSFORGE_BASE_URL=https://api.your-domain.example
 VITE_INSFORGE_ANON_KEY=your-instance-public-anon-key
+# 可选：仅限固定单用户部署，登录页只显示密码输入
+# VITE_TOKENTRACKER_DEFAULT_LOGIN_EMAIL=owner@your-domain.example
 ```
+
+`VITE_TOKENTRACKER_DEFAULT_LOGIN_EMAIL` 只适用于确定的固定单用户实例：后端仍用这个完整邮箱鉴权，但登录页只显示密码输入，并隐藏邮箱、OAuth、注册和忘记密码入口。它不是密码配置，也不能用来绕过认证；不要在任何 `VITE_` 变量中放密码。未设置时保持普通多用户登录界面。
 
 替换为自己实例的公开匿名 key。InsForge v2.3.3 生成 `anon_` 后接 40 或 64 位小写十六进制的 opaque key，旧实例可使用 `role=anon` 的 JWT。后端验证实际 key 值，前缀本身不能授予权限。自定义地址缺少自己的 key 时不会回退到官方 key，而会明确报错。管理员、service-role、用户 JWT 和私钥不能用于前端；构建会拒绝这些值，日志不打印输入内容。未配置自定义地址时保留官方默认。兼容原有的 `VITE_TOKENTRACKER_BACKEND_BASE_URL`、`VITE_TOKENTRACKER_BACKEND_ANON_KEY` 配对。[官方 key 验证代码](https://github.com/InsForge/InsForge/blob/v2.3.3/backend/src/services/secrets/secret.service.ts#L637-L718)。
 
@@ -73,6 +77,39 @@ CLI 支持 `TOKENTRACKER_INSFORGE_BASE_URL`、`TOKENTRACKER_INSFORGE_ANON_KEY`�
 服务端明确返回 `self_hosted` 后，页面显示免费私有实例，不展示官方价格、试用或付款 portal。容量、备份和历史保留由运营者管理，私有路径默认禁用公开 Profile，不向官方服务公开资料。
 
 已经发布的桌面包仍需要配套 CLI 和仪表盘版本。设备授权的实际链接必须指向自己的仪表盘，不能让现有 edge 中的官方地址把自部署用户送到官方账号系统。浏览器、桌面授权、两个实例之间的凭证隔离，以及空白 VPS 都需继续验收，单独构建前端不代表整条链路已完成。
+
+## 没有域名和证书的可信局域网模式
+
+如果只是家里或实验室的隔离内网，可以显式启用私有 IP 的 HTTP，不必配置域名或 SSL。默认仍然要求 HTTPS（本机开发允许 loopback HTTP）；即使打开开关，公网 HTTP 地址也会被拒绝。HTTP 不加密，请只在可信内网使用。
+
+三个进程分别配置，不能互相替代：
+
+```dotenv
+# NAS 上设备授权函数的运行时环境
+TOKENTRACKER_ALLOW_PRIVATE_HTTP=1
+TOKENTRACKER_DASHBOARD_URL=http://192.168.1.20:8080
+
+# 构建私有 Dashboard 时使用的环境（会固化进静态文件）
+VITE_INSFORGE_BASE_URL=http://192.168.1.20:7130
+VITE_INSFORGE_ANON_KEY=你的实例公开匿名key
+VITE_TOKENTRACKER_ALLOW_PRIVATE_HTTP=1
+```
+
+修改 `VITE_` 开关后必须重新构建 Dashboard。函数开关要配置到 NAS 的 Deno 函数工作进程，不是执行 `build-functions.cjs` 的临时 shell；生成的 `functions.json` 会分别列出这两个设置。
+
+每台客户端只需明确选择一次：
+
+```sh
+tokentracker init \
+  --base-url http://192.168.1.20:7130 \
+  --dashboard-url http://192.168.1.20:8080 \
+  --anon-key-file /path/to/anon-key \
+  --allow-private-http
+```
+
+无界面的设备使用 `tokentracker device-login`，参数相同并加上 `--allow-private-http`。CLI 会把 `allowPrivateHttp: true` 保存到本机 `config.json`，之后 `serve`、hook 和后台同步不需要重新设置环境变量。不要把设备 token 或这个信任选择复制到另一个账户或实例。
+
+这里只接受私有 IP 字面地址：RFC1918 IPv4、loopback、link-local、IPv6 ULA/link-local。`nas.local` 等主机名、公网 IP 和 CGNAT 地址不接受。此开关不会绕过浏览器的 mixed-content/CORS 限制，也不会放宽本机 Dashboard 的 loopback Origin 防护；NAS 的 Dashboard 和 API 都使用同一个 HTTP 内网地址，CLI 自己的端口继续只绑定 loopback。
 
 ## 怎样才算部署完成
 

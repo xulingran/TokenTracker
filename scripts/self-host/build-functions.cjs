@@ -62,14 +62,15 @@ async function buildFunctions(directory) {
         const uri='verification_uri: "https://www.tokentracker.cc/device",';
         const complete='verification_uri_complete: `https://www.tokentracker.cc/device?user_code=${encodeURIComponent(user_code)}`,';
         if(!contents.includes(anchor)||!contents.includes(uri)||!contents.includes(complete))throw Error("Device authorization source changed; review its self-host origin adaptation");
-        contents=contents.replace(anchor,`  let verificationUri: string;
+        contents = `import { normalizeInstanceUrl } from "../src/lib/private-http.mjs";\n` + contents;
+        contents = contents.replace(anchor,`  let verificationUri: string;
   try {
-    const dashboard = new URL(Deno.env.get("TOKENTRACKER_DASHBOARD_URL") || "");
-    if (dashboard.username || dashboard.password ||
-      (dashboard.protocol !== "https:" && !(dashboard.protocol === "http:" && ["localhost","127.0.0.1"].includes(dashboard.hostname)))) {
-      return json({error:"self-host dashboard URL must use HTTPS"},500);
+    const allowPrivateHttp = Deno.env.get("TOKENTRACKER_ALLOW_PRIVATE_HTTP") === "1";
+    const dashboard = normalizeInstanceUrl(Deno.env.get("TOKENTRACKER_DASHBOARD_URL") || "", { allowPrivateHttp });
+    if (!dashboard) {
+      return json({error:"self-host dashboard URL must use HTTPS, or private HTTP when explicitly enabled"},500);
     }
-    verificationUri = new URL("/device",dashboard).toString();
+    verificationUri = new URL("/device", dashboard).toString();
   } catch { return json({error:"self-host dashboard URL is required"},500); }
 `+anchor).replaceAll(uri,"verification_uri: verificationUri,")
           .replaceAll(complete,'verification_uri_complete: verificationUri + "?user_code=" + encodeURIComponent(user_code),');
@@ -106,7 +107,8 @@ async function buildFunctions(directory) {
   }
   const manifest={schemaVersion:1,mode:"self_hosted",functions:entries,
     serverSecrets:["INSFORGE_BASE_URL","INSFORGE_SERVICE_ROLE_KEY","ANON_KEY","JWT_SECRET or JWT_PUBLIC_KEY","TOKENTRACKER_DASHBOARD_URL"],
-    dashboardBuildVariables:["VITE_INSFORGE_BASE_URL","VITE_INSFORGE_ANON_KEY"],
+    serverEnvironment:["TOKENTRACKER_ALLOW_PRIVATE_HTTP"],
+    dashboardBuildVariables:["VITE_INSFORGE_BASE_URL","VITE_INSFORGE_ANON_KEY","VITE_TOKENTRACKER_ALLOW_PRIVATE_HTTP","VITE_TOKENTRACKER_DEFAULT_LOGIN_EMAIL"],
     excluded:["official community publishing","payment provider webhooks","billing merchant credentials"]};
   await fs.writeFile(path.join(directory,"functions.json"),JSON.stringify(manifest,null,2)+"\n");
   return manifest;

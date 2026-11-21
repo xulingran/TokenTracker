@@ -80,7 +80,7 @@ Audit: [`src/lib/telemetry.js`](../src/lib/telemetry.js), [`dashboard/src/lib/an
 | **Cloud sync / leaderboard** | `srctyff5.us-east.insforge.app` | Hourly buckets only — see §4 | Signing in to a TokenTracker account |
 | **Cloud billing (planned)** | TokenTracker backend | Signed-in account, plan, provider, order reference, and requests to read membership or payment history | Choosing trial, checkout, or account billing after launch |
 | **Payment checkout (planned)** | Waffo Pancake hosted checkout | Order and opaque account references, environment, plan and amount/currency to bind payment to membership. You enter your purchase email and payment/billing details in Waffo's interface. No usage buckets or AI provider credentials are sent | Explicitly choosing paid Cloud checkout after launch |
-| **Exchange rates** | `open.er-api.com` | Nothing but the request itself | Selecting a non-USD display currency |
+| **Exchange rates** | `registry.npmmirror.com` (Currency API mirror) | Nothing but the request itself | Selecting a non-USD display currency |
 | **Desktop pet download** | `codex-pets.net` | The pet id you chose | Importing a pet from a link |
 | **IP check page** | `ip.net.coffee`, `claude.ai`, `1.1.1.1` | Your IP address is, by design, what these endpoints observe — that page exists to tell you how providers see your network | Opening the IP Check page |
 | **Service status page** | Provider status pages (`status.claude.com`, `status.openai.com`, `status.cursor.com`, …) | Nothing but the request itself | Opening the Service Status page |

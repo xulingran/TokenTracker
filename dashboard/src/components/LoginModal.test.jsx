@@ -78,9 +78,28 @@ beforeEach(() => {
     state.authListeners.forEach((listener) => listener());
     return { error: null };
   });
+  vi.stubEnv("VITE_TOKENTRACKER_DEFAULT_LOGIN_EMAIL", "");
   window.history.replaceState(null, "", "/cloud");
 });
-afterEach(() => { cleanup(); window.history.replaceState(null, "", "/"); });
+afterEach(() => { cleanup(); vi.unstubAllEnvs(); window.history.replaceState(null, "", "/"); });
+
+it("uses only a password for an explicitly fixed self-hosted account", async () => {
+  vi.stubEnv("VITE_TOKENTRACKER_DEFAULT_LOGIN_EMAIL", "  zhong@tokentracker.local  ");
+  window.history.replaceState(null, "", "/login?native=1&provider=github");
+  render(<LoginCard subtitle={copy("login.subtitle")} />);
+  expect(screen.getByLabelText("Password")).toBeInTheDocument();
+  expect(screen.queryByText(copy("login.subtitle"))).not.toBeInTheDocument();
+  expect(screen.queryByLabelText("Email")).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Continue with Email" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /GitHub/ })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: copy("login.tab.sign_up") })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: copy("login.forgot_password") })).not.toBeInTheDocument();
+  expect(state.auth.getPublicAuthConfig).not.toHaveBeenCalled();
+  fireEvent.change(screen.getByLabelText("Password"), { target: { value: "a-secret-password" } });
+  await click(screen.getByRole("button", { name: copy("login.tab.sign_in") }));
+  expect(state.auth.signInWithPassword).toHaveBeenCalledWith({ email: "zhong@tokentracker.local", password: "a-secret-password" });
+  expect(state.auth.signInWithOAuth).not.toHaveBeenCalled();
+});
 
 it("returns a password sign-in to the complete Cloud task without activating it", async () => {
   const subtitle = copy("cloud.login.trial_context");

@@ -182,7 +182,8 @@ async function cmdInit(argv, options = {}) {
 
   const existingConfig = await readJson(configPath);
   const runtime = resolveRuntimeConfig({
-    cli: { baseUrl: opts.baseUrl, dashboardUrl: opts.dashboardUrl, anonKey: opts.anonKey },
+    cli: { baseUrl: opts.baseUrl, dashboardUrl: opts.dashboardUrl, anonKey: opts.anonKey,
+      allowPrivateHttp: opts.allowPrivateHttp },
     config: existingConfig || {},
     env: process.env,
   });
@@ -381,8 +382,10 @@ async function runSetup({
     existingConfig && typeof existingConfig === "object" && !Array.isArray(existingConfig)
       ? existingConfig
       : {};
-  const previousRuntime = resolveRuntimeConfig({ config: existingPlainConfig, env: {} });
-  const changedInstance = normalizeInstanceBaseUrl(previousRuntime.baseUrl) !== runtime.baseUrl ||
+  const previousRuntime = resolveRuntimeConfig({ config: existingPlainConfig, env: {},
+    cli: { allowPrivateHttp: runtime.allowPrivateHttp } });
+  const changedInstance = normalizeInstanceBaseUrl(previousRuntime.baseUrl,
+    { allowPrivateHttp: runtime.allowPrivateHttp }) !== runtime.baseUrl ||
     previousRuntime.anonKey !== runtime.anonKey;
   if (changedInstance) {
     resetInstanceState(trackerDir);
@@ -404,6 +407,9 @@ async function runSetup({
     config.baseUrl = runtime.baseUrl;
     config.dashboardUrl = runtime.dashboardUrl;
   }
+  // Persist an explicit LAN opt-in so hooks and background serve processes do
+  // not silently lose access after the interactive shell exits.
+  if (runtime.allowPrivateHttp) config.allowPrivateHttp = true;
 
   await writeJson(configPath, config);
   await chmod600IfPossible(configPath);
@@ -1411,6 +1417,7 @@ function parseArgs(argv) {
   const out = {
     baseUrl: null,
     dashboardUrl: null,
+    allowPrivateHttp: null,
     anonKey: null,
     anonKeyFile: null,
     email: null,
@@ -1427,6 +1434,7 @@ function parseArgs(argv) {
     const a = argv[i];
     if (a === "--base-url") out.baseUrl = argv[++i] || null;
     else if (a === "--dashboard-url") out.dashboardUrl = argv[++i] || null;
+    else if (a === "--allow-private-http") out.allowPrivateHttp = true;
     else if (a === "--anon-key") out.anonKey = argv[++i] || null;
     else if (a === "--anon-key-file") out.anonKeyFile = argv[++i] || null;
     else if (a === "--email") out.email = argv[++i] || null;

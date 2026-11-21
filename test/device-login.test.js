@@ -166,3 +166,44 @@ test("cmdDeviceLogin rejects approved responses without a usable device token", 
     await fs.rm(home, { recursive: true, force: true });
   }
 });
+
+test("cmdDeviceLogin supports an explicit private LAN HTTP instance and persists the opt-in", async () => {
+  const home = await fs.mkdtemp(path.join(os.tmpdir(), "device-login-lan-"));
+  const baseUrl = "http://192.168.1.20:7130";
+  const dashboardUrl = "http://192.168.1.20:8080";
+  const configPath = path.join(home, ".tokentracker", "tracker", "config.json");
+  const calls = [];
+  const originalFetch = global.fetch;
+  const originalStdoutWrite = process.stdout.write;
+  global.fetch = async (url, opts) => {
+    calls.push(String(url));
+    if (String(url).endsWith("/tokentracker-device-flow-authorize")) {
+      return { ok: true, status: 200, async json() {
+        return { device_code: "d".repeat(64), user_code: "ABCD-2345",
+          verification_uri: dashboardUrl + "/device",
+          verification_uri_complete: dashboardUrl + "/device?user_code=ABCD-2345", expires_in: 900 };
+      } };
+    }
+    return { ok: true, status: 200, async json() {
+      return { status: "approved", user_id: "user-lan", device_token: "device-lan", device_id: "device-lan" };
+    } };
+  };
+  process.stdout.write = () => true;
+  try {
+    const args = ["--base-url", baseUrl, "--dashboard-url", dashboardUrl, "--anon-key", publicAnon];
+    await cmdDeviceLogin([...args, "--allow-private-http"], { home, sleep: async () => {} });
+    let config = JSON.parse(await fs.readFile(configPath, "utf8"));
+    assert.equal(config.allowPrivateHttp, true);
+    assert.equal(config.deviceToken, "device-lan");
+    assert.equal(config.deviceTokenBaseUrl, baseUrl);
+    await cmdDeviceLogin(args, { home, sleep: async () => {} });
+    config = JSON.parse(await fs.readFile(configPath, "utf8"));
+    assert.equal(config.allowPrivateHttp, true);
+    assert.equal(calls.length, 4);
+    assert.ok(calls.every(url => url.startsWith(baseUrl + "/functions/")));
+  } finally {
+    process.stdout.write = originalStdoutWrite;
+    global.fetch = originalFetch;
+    await fs.rm(home, { recursive: true, force: true });
+  }
+});

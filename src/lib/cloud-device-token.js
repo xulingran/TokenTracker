@@ -114,10 +114,11 @@ function resolveDeviceTokenPresence({
   const entry = readCloudDeviceTokenEntry(path.join(trackerDir, "cloud-device-token.json"));
   if (!entry) return { set: false, source: null };
 
+  const allowPrivateHttp = resolved?.allowPrivateHttp === true;
   const expectedBase =
-    normalizeInstanceBaseUrl(resolved?.baseUrl) ||
+    normalizeInstanceBaseUrl(resolved?.baseUrl, { allowPrivateHttp }) ||
     (typeof resolved?.baseUrl === "string" ? resolved.baseUrl.trim() : "") ||
-    normalizeInstanceBaseUrl(config.baseUrl) ||
+    normalizeInstanceBaseUrl(config.baseUrl, { allowPrivateHttp }) ||
     (typeof config.baseUrl === "string" ? config.baseUrl.trim() : "");
   if (expectedBase && entry.baseUrl !== expectedBase) {
     return { set: false, source: null };

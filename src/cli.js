@@ -104,6 +104,7 @@ function printHelp() {
       "  - OpenClaw session plugin auto-links when OpenClaw is installed (requires hooks.allowConversationAccess enabled + gateway restart).",
       "  - auto sync waits for a device token.",
       "  - optional: --dashboard-url for hosted landing.",
+      "  - optional: --allow-private-http permits HTTP only to private IP literals on a trusted LAN.",
       "  - sync parses ~/.codex/sessions/**/rollout-*.jsonl and ~/.code/sessions/**/rollout-*.jsonl, then uploads token deltas.",
       "  - --from-openclaw marks sync runs triggered by the OpenClaw session plugin.",
       "  - --debug shows original backend errors.",

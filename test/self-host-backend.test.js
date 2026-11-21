@@ -42,6 +42,9 @@ test("self-hosted access is explicitly free without paid orders, trials, device 
   await assert.rejects(query("cloud_create_order",[owner,"live","waffo","cloud_usd_monthly",randomUUID()]),/free.*paid order/);
   await assert.rejects(query("cloud_start_trial",[owner,"live"]),/free.*trial/);
   await assert.rejects(query("cloud_membership",[randomUUID(),"live"]),/account does not exist/);
+  const account=await instance.request("tokentracker-billing?action=account",undefined,owner);
+  assert.equal(account.response.status,200,account.data.error);
+  assert.equal(account.data.membership.status,"self_hosted");
   assert.equal((await instance.db.query("SELECT count(*)::int n FROM tokentracker_cloud_payments")).rows[0].n,0);
 });
 
@@ -123,6 +126,34 @@ test("self-host device authorization points to its own dashboard and the device 
   assert.equal((await upload(polled.data.device_token,[row(50)])).response.status,200);
 });
 
+test("self-host device authorization requires a runtime opt-in for private HTTP dashboards",async()=>{
+  const previousUrl=instance.env.TOKENTRACKER_DASHBOARD_URL;
+  const previousFlag=instance.env.TOKENTRACKER_ALLOW_PRIVATE_HTTP;
+  try {
+    instance.env.TOKENTRACKER_DASHBOARD_URL="http://192.168.1.20:8080";
+    delete instance.env.TOKENTRACKER_ALLOW_PRIVATE_HTTP;
+    const denied=await instance.request("tokentracker-device-flow-authorize",{client_info:"LAN without opt-in"});
+    assert.equal(denied.response.status,500);
+    instance.env.TOKENTRACKER_ALLOW_PRIVATE_HTTP="1";
+    const owner=await instance.user();
+    const code=await instance.request("tokentracker-device-flow-authorize",{client_info:"Private LAN",machine_id:randomUUID()});
+    assert.equal(code.response.status,200,code.data.error);
+    assert.equal(code.data.verification_uri,"http://192.168.1.20:8080/device");
+    assert.equal(new URL(code.data.verification_uri_complete).origin,"http://192.168.1.20:8080");
+    assert.equal((await instance.request("tokentracker-device-flow-grant",{user_code:code.data.user_code},owner)).response.status,200);
+    const polled=await instance.request("tokentracker-device-flow-poll",{device_code:code.data.device_code});
+    assert.equal(polled.response.status,200,polled.data.error);
+    assert.equal((await upload(polled.data.device_token,[row(50)])).response.status,200);
+    instance.env.TOKENTRACKER_DASHBOARD_URL="http://8.8.8.8:8080";
+    const publicDenied=await instance.request("tokentracker-device-flow-authorize",{client_info:"Public HTTP remains denied"});
+    assert.equal(publicDenied.response.status,500);
+  } finally {
+    instance.env.TOKENTRACKER_DASHBOARD_URL=previousUrl;
+    if(previousFlag===undefined)delete instance.env.TOKENTRACKER_ALLOW_PRIVATE_HTTP;
+    else instance.env.TOKENTRACKER_ALLOW_PRIVATE_HTTP=previousFlag;
+  }
+});
+
 test("private aggregation sees whole-row corrections, timezone buckets, and DeepSeek weekend tiers",async()=>{
   const owner=await instance.user();const device=await issue(owner,"Correctable host");
   await upload(device.token,[row(100)]);
@@ -169,6 +200,9 @@ test("installation and function manifests exclude production data repairs and me
   assert.equal(instance.manifest.functions.length,14);
   assert.ok(instance.manifest.functions.some(f=>f.slug==="tokentracker-device-flow-authorize"));
   assert.ok(!instance.manifest.functions.some(f=>/webhook|leaderboard|public-visibility/.test(f.slug)));
+  assert.ok(instance.manifest.dashboardBuildVariables.includes("VITE_TOKENTRACKER_ALLOW_PRIVATE_HTTP"));
+  assert.ok(instance.manifest.dashboardBuildVariables.includes("VITE_TOKENTRACKER_DEFAULT_LOGIN_EMAIL"));
+  assert.ok(instance.manifest.serverEnvironment.includes("TOKENTRACKER_ALLOW_PRIVATE_HTTP"));
   assert.ok(!instance.manifest.serverSecrets.some(name=>/WAFFO|PADDLE|ALIPAY|WECHAT/.test(name)));
   assert.ok(!buildSql().includes("ban-confirmed-leaderboard-manipulation"));
 });

@@ -1,3 +1,5 @@
+const { normalizeInstanceUrl } = require("./private-http");
+
 const DEFAULT_BASE_URL = "https://srctyff5.us-east.insforge.app";
 // InsForge projects this product has retired. b46ug8xu was production until
 // the 2026-04-19 migration to srctyff5 (0.5.67, commit 73f461b8); init
@@ -18,6 +20,9 @@ const DEFAULT_ANON_KEY =
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3OC0xMjM0LTU2NzgtOTBhYi1jZGVmMTIzNDU2NzgiLCJlbWFpbCI6ImFub25AaW5zZm9yZ2UuY29tIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExNDU5NDd9.T0auta_IrVIh0uXW1bob5QSnzvsnJmN28r5XkSGEuQY";
 
 function resolveRuntimeConfig({ cli = {}, config = {}, env = process.env, defaults = {} } = {}) {
+  const allowPrivateHttp = [cli.allowPrivateHttp, config.allowPrivateHttp,
+    env?.TOKENTRACKER_ALLOW_PRIVATE_HTTP, defaults.allowPrivateHttp]
+    .some(value => normalizeBoolean(value) === true);
   // Older Windows test runs could leak their fixture HOME and persist
   // https://example.invalid into the user's real config.json. The test
   // isolation bug is fixed, but existing installs must recover instead of
@@ -30,10 +35,10 @@ function resolveRuntimeConfig({ cli = {}, config = {}, env = process.env, defaul
     defaults.baseUrl,
     DEFAULT_BASE_URL,
   );
-  const selectedBase = normalizeInstanceBaseUrl(baseUrl.value);
-  const configBase = normalizeInstanceBaseUrl(persistedBaseUrl || DEFAULT_BASE_URL);
-  const envBase = normalizeInstanceBaseUrl(env?.TOKENTRACKER_INSFORGE_BASE_URL || baseUrl.value);
-  const defaultBase = normalizeInstanceBaseUrl(defaults.baseUrl || DEFAULT_BASE_URL);
+  const selectedBase = normalizeInstanceBaseUrl(baseUrl.value, { allowPrivateHttp });
+  const configBase = normalizeInstanceBaseUrl(persistedBaseUrl || DEFAULT_BASE_URL, { allowPrivateHttp });
+  const envBase = normalizeInstanceBaseUrl(env?.TOKENTRACKER_INSFORGE_BASE_URL || baseUrl.value, { allowPrivateHttp });
+  const defaultBase = normalizeInstanceBaseUrl(defaults.baseUrl || DEFAULT_BASE_URL, { allowPrivateHttp });
   const custom = selectedBase !== DEFAULT_BASE_URL;
   const anonKey = pickString(
     cli.anonKey,
@@ -51,9 +56,9 @@ function resolveRuntimeConfig({ cli = {}, config = {}, env = process.env, defaul
   );
   const deviceToken = pickString(
     cli.deviceToken,
-    configBase === selectedBase && (!custom || normalizeInstanceBaseUrl(config.deviceTokenBaseUrl) === selectedBase)
+    configBase === selectedBase && (!custom || normalizeInstanceBaseUrl(config.deviceTokenBaseUrl, { allowPrivateHttp }) === selectedBase)
       ? config.deviceToken : undefined,
-    envBase === selectedBase && (!custom || normalizeInstanceBaseUrl(env?.TOKENTRACKER_INSFORGE_BASE_URL) === selectedBase)
+    envBase === selectedBase && (!custom || normalizeInstanceBaseUrl(env?.TOKENTRACKER_INSFORGE_BASE_URL, { allowPrivateHttp }) === selectedBase)
       ? env?.TOKENTRACKER_DEVICE_TOKEN : undefined,
     defaultBase === selectedBase ? defaults.deviceToken : undefined,
     null,
@@ -76,7 +81,7 @@ function resolveRuntimeConfig({ cli = {}, config = {}, env = process.env, defaul
 
   const unsafeKey = anonKey.value && (!isPublicAnonKey(anonKey.value) || (custom && anonKey.value === DEFAULT_ANON_KEY));
   const configurationError = !selectedBase ? "invalid_insforge_base_url"
-    : !normalizeInstanceBaseUrl(dashboardUrl.value) ? "invalid_dashboard_url"
+    : !normalizeInstanceBaseUrl(dashboardUrl.value, { allowPrivateHttp }) ? "invalid_dashboard_url"
     : unsafeKey ? "invalid_insforge_anon_key"
     : custom && !anonKey.value ? "custom_insforge_anon_key_required" : null;
   return {
@@ -87,6 +92,7 @@ function resolveRuntimeConfig({ cli = {}, config = {}, env = process.env, defaul
     httpTimeoutMs: httpTimeoutMs.value,
     debug: debug.value,
     autoRetryNoSpawn: autoRetryNoSpawn.value,
+    allowPrivateHttp,
     configurationError,
     sources: {
       baseUrl: baseUrl.source,
@@ -100,14 +106,8 @@ function resolveRuntimeConfig({ cli = {}, config = {}, env = process.env, defaul
   };
 }
 
-function normalizeInstanceBaseUrl(value) {
-  try {
-    const url = new URL(String(value || ""));
-    const loopback = ["localhost", "127.0.0.1", "::1", "[::1]"].includes(url.hostname);
-    if (url.username || url.password || url.search || url.hash ||
-      (url.protocol !== "https:" && !(url.protocol === "http:" && loopback))) return null;
-    return url.toString().replace(/\/$/, "");
-  } catch { return null; }
+function normalizeInstanceBaseUrl(value, { allowPrivateHttp = false } = {}) {
+  return normalizeInstanceUrl(value, { allowPrivateHttp });
 }
 
 function isPublicAnonKey(value) {
@@ -125,9 +125,9 @@ function isPublicAnonKey(value) {
 function assertInsforgeRuntime(runtime) {
   if (!runtime?.configurationError) return runtime;
   const messages = {
-    invalid_insforge_base_url: "InsForge URL must use HTTPS, or HTTP on localhost, without credentials, query or fragment.",
+    invalid_insforge_base_url: "InsForge URL must use HTTPS, HTTP on localhost, or HTTP on a private IP with TOKENTRACKER_ALLOW_PRIVATE_HTTP=1.",
     invalid_insforge_anon_key: "Use this instance's public anon key. Admin and service keys cannot be used by the client.",
-    invalid_dashboard_url: "Dashboard URL must use HTTPS, or HTTP on localhost, without credentials, query or fragment.",
+    invalid_dashboard_url: "Dashboard URL must use HTTPS, HTTP on localhost, or HTTP on a private IP with TOKENTRACKER_ALLOW_PRIVATE_HTTP=1.",
     custom_insforge_anon_key_required: "A custom InsForge URL requires its own public anon key. Configure --anon-key-file or TOKENTRACKER_INSFORGE_ANON_KEY.",
   };
   throw Object.assign(new Error(messages[runtime.configurationError] || "Invalid InsForge configuration"), {

@@ -28,6 +28,18 @@ describe("public backend configuration", () => {
   it.each(["https://user:password@private.example", "http://private.example", "javascript:alert(1)", "https://private.example?token=secret", "https://private.example#secret"])("rejects unsafe backend URL %s", (baseUrl) => {
     expect(validateInsforgeDeployment({ baseUrl, anonKey: anon }).errorCode).toBe("invalid_backend_url");
   });
+  it("allows only explicitly enabled private IP HTTP backends", () => {
+    const baseUrl = "http://192.168.1.20:7130";
+    expect(validateInsforgeDeployment({ baseUrl, anonKey: anon }).errorCode).toBe("invalid_backend_url");
+    expect(validateInsforgeDeployment({ baseUrl, anonKey: anon, allowPrivateHttp: true }))
+      .toEqual({ baseUrl, anonKey: anon, errorCode: null });
+    expect(validateInsforgeBuildEnv({ VITE_INSFORGE_BASE_URL: baseUrl, VITE_INSFORGE_ANON_KEY: anon,
+      VITE_TOKENTRACKER_ALLOW_PRIVATE_HTTP: "1" }).errorCode).toBeNull();
+    for (const unsafe of ["http://8.8.8.8:7130", "http://nas.local:7130", "http://172.32.0.1:7130"]) {
+      expect(validateInsforgeDeployment({ baseUrl: unsafe, anonKey: anon, allowPrivateHttp: true }).errorCode)
+        .toBe("invalid_backend_url");
+    }
+  });
   it("allows loopback development and validates either existing VITE naming pair", () => {
     expect(validateInsforgeBuildEnv({ VITE_TOKENTRACKER_BACKEND_BASE_URL: "http://127.0.0.1:7130", VITE_TOKENTRACKER_BACKEND_ANON_KEY: anon }).errorCode).toBeNull();
     expect(validateInsforgeBuildEnv({}).baseUrl).toBe(OFFICIAL_INSFORGE_URL);

@@ -7,11 +7,17 @@ beforeEach(() => {
   sdk.create.mockReset().mockImplementation((config) => ({ config, tokenManager: { clearSession: vi.fn() } }));
   localStorage.clear(); sessionStorage.clear();
   delete window.__TOKENTRACKER_RUNTIME_CONFIG__;
-  for (const key of ["VITE_INSFORGE_BASE_URL", "VITE_INSFORGE_ANON_KEY", "VITE_TOKENTRACKER_BACKEND_BASE_URL", "VITE_TOKENTRACKER_BACKEND_ANON_KEY"]) vi.stubEnv(key, "");
+  for (const key of ["VITE_INSFORGE_BASE_URL", "VITE_INSFORGE_ANON_KEY", "VITE_TOKENTRACKER_BACKEND_BASE_URL", "VITE_TOKENTRACKER_BACKEND_ANON_KEY", "VITE_TOKENTRACKER_ALLOW_PRIVATE_HTTP", "VITE_TOKENTRACKER_DEFAULT_LOGIN_EMAIL"]) vi.stubEnv(key, "");
 });
 afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); delete window.__TOKENTRACKER_RUNTIME_CONFIG__; });
 
 describe("instance-bound frontend SDK", () => {
+  it("reads a trimmed fixed login email only when explicitly configured", async () => {
+    const config = await import("./insforge-config");
+    expect(config.getDefaultLoginEmail()).toBe("");
+    vi.stubEnv("VITE_TOKENTRACKER_DEFAULT_LOGIN_EMAIL", "  zhong@tokentracker.local  ");
+    expect(config.getDefaultLoginEmail()).toBe("zhong@tokentracker.local");
+  });
   it("keeps the official singleton and OAuth callback behavior without runtime overrides", async () => {
     const config = await import("./insforge-config");
     const client = config.getOrCreateInsforgeClient();
@@ -32,6 +38,24 @@ describe("instance-bound frontend SDK", () => {
     expect(config.isCloudInsforgeConfigured()).toBe(false);
     expect(config.getInsforgeConnectionHost()).toBeNull();
     expect(config.getOrCreateInsforgeClient()).toBeNull();
+  });
+  it("accepts private HTTP only when the runtime descriptor or build explicitly allows it", async () => {
+    window.__TOKENTRACKER_RUNTIME_CONFIG__ = { baseUrl: "http://192.168.1.20:7130", anonKey: anon("lan") };
+    const config = await import("./insforge-config");
+    expect(config.getInsforgeRemoteUrl()).toBe("");
+    window.__TOKENTRACKER_RUNTIME_CONFIG__ = { baseUrl: "http://192.168.1.20:7130", anonKey: anon("lan"), allowPrivateHttp: true };
+    expect(config.getInsforgeRemoteUrl()).toBe("http://192.168.1.20:7130");
+    expect(config.getInsforgeAnonKey()).toBe(anon("lan"));
+    window.__TOKENTRACKER_RUNTIME_CONFIG__ = { baseUrl: "http://8.8.8.8:7130", anonKey: anon("public"), allowPrivateHttp: true };
+    expect(config.getInsforgeRemoteUrl()).toBe("");
+  });
+  it("passes the private HTTP build opt-in through the frontend validator", async () => {
+    vi.stubEnv("VITE_INSFORGE_BASE_URL", "http://192.168.1.20:7130");
+    vi.stubEnv("VITE_INSFORGE_ANON_KEY", anon("lan-build"));
+    vi.stubEnv("VITE_TOKENTRACKER_ALLOW_PRIVATE_HTTP", "1");
+    const config = await import("./insforge-config");
+    expect(config.getInsforgeRemoteUrl()).toBe("http://192.168.1.20:7130");
+    expect(config.getInsforgeConfigurationError()).toBeNull();
   });
   it("does not expose the official key when custom VITE deployment forgot its key", async () => {
     vi.stubEnv("VITE_INSFORGE_BASE_URL", "https://custom.example");

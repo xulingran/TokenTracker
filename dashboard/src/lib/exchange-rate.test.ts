@@ -20,11 +20,11 @@ describe("shouldRefetch", () => {
 });
 
 describe("fetchUsdRates", () => {
-  it("picks supported rates from API response", async () => {
+  it("picks supported rates from Currency API response", async () => {
     const fetchImpl = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({
-        rates: { CNY: 7.0987, EUR: 0.92, GBP: 0.79, JPY: 155, HKD: 7.8, BTC: 0.00002 },
+        usd: { cny: 7.0987, eur: 0.92, gbp: 0.79, jpy: 155, hkd: 7.8, btc: 0.00002 },
       }),
     });
     const result = await fetchUsdRates({ fetchImpl: fetchImpl as any });
@@ -52,7 +52,7 @@ describe("fetchUsdRates", () => {
   it("throws when no supported currencies present", async () => {
     const fetchImpl = vi.fn().mockResolvedValue({
       ok: true,
-      json: async () => ({ rates: { BTC: 0.00002 } }),
+      json: async () => ({ usd: { btc: 0.00002 } }),
     });
     await expect(fetchUsdRates({ fetchImpl: fetchImpl as any })).rejects.toThrow();
   });
@@ -60,7 +60,7 @@ describe("fetchUsdRates", () => {
   it("respects custom url and codes", async () => {
     const fetchImpl = vi.fn().mockResolvedValue({
       ok: true,
-      json: async () => ({ rates: { EUR: 0.9, JPY: 150 } }),
+      json: async () => ({ usd: { eur: 0.9, jpy: 150 } }),
     });
     const r = await fetchUsdRates({
       fetchImpl: fetchImpl as any,

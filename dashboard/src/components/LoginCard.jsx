@@ -6,6 +6,7 @@ import { useLocale } from "../hooks/useLocale.js";
 import { copy } from "../lib/copy";
 import { cn } from "../lib/cn";
 import { cloudLoginNextPath } from "../contexts/LoginModalContext.jsx";
+import { getDefaultLoginEmail } from "../lib/insforge-config";
 
 const GOOGLE_ICON = (
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
@@ -73,6 +74,8 @@ export function LoginCard({
     resetPassword,
   } = useInsforgeAuth();
 
+  const defaultLoginEmail = getDefaultLoginEmail();
+  const passwordOnly = Boolean(defaultLoginEmail);
   const [mode, setMode] = useState(initialMode);
   const [email, setEmail] = useState(initialEmail);
   const [password, setPassword] = useState("");
@@ -83,10 +86,11 @@ export function LoginCard({
   const [error, setError] = useState(null);
   const [banner, setBanner] = useState(null);
   const [complete, setComplete] = useState(false);
-  const [emailExpanded, setEmailExpanded] = useState(initialMode !== "signin" || initialEmail ? true : false);
-  const [configLoading, setConfigLoading] = useState(true);
+  const [emailExpanded, setEmailExpanded] = useState(passwordOnly || initialMode !== "signin" || Boolean(initialEmail));
+  const [configLoading, setConfigLoading] = useState(!passwordOnly);
   const [oauthProviders, setOauthProviders] = useState([]);
   const [passwordMinLength, setPasswordMinLength] = useState(8);
+  const authMode = passwordOnly ? "signin" : mode;
 
   // Sync initial state if they change externally (useful when ResetPasswordPage updates props)
   useEffect(() => {
@@ -101,8 +105,13 @@ export function LoginCard({
     if (initialCode) setCode(initialCode);
   }, [initialCode]);
 
-  // Load auth config when component mounts
+  // Fixed-account NAS builds do not offer OAuth, so skip its public config request.
   useEffect(() => {
+    if (passwordOnly) {
+      setConfigLoading(false);
+      setOauthProviders([]);
+      return;
+    }
     if (!enabled) return;
     let active = true;
     setConfigLoading(true);
@@ -130,7 +139,7 @@ export function LoginCard({
     return () => {
       active = false;
     };
-  }, [enabled, getPublicAuthConfig]);
+  }, [enabled, getPublicAuthConfig, passwordOnly]);
 
   // Handle successful login
   useEffect(() => {
@@ -171,7 +180,7 @@ export function LoginCard({
 
   // Auto-trigger OAuth when opened with ?native=1&provider=xxx
   useEffect(() => {
-    if (!enabled || configLoading || signedIn) return;
+    if (passwordOnly || !enabled || configLoading || signedIn) return;
     if (typeof window === "undefined") return;
     const search = window.location.search;
     if (!search) return;
@@ -184,14 +193,14 @@ export function LoginCard({
         handleOAuth(autoProvider);
       }
     }
-  }, [enabled, configLoading, signedIn, oauthProviders, handleOAuth]);
+  }, [enabled, configLoading, signedIn, oauthProviders, handleOAuth, passwordOnly]);
 
   const handleEmailAuth = useCallback(async (e) => {
     e.preventDefault();
     setError(null);
     setBusy(true);
     try {
-      if (mode === "signup") {
+      if (authMode === "signup") {
         const { data, error: err } = await signUp({
           email: email.trim(),
           password,
@@ -209,7 +218,7 @@ export function LoginCard({
         await refreshUser();
         return;
       }
-      const { error: err } = await signInWithPassword({ email: email.trim(), password });
+      const { error: err } = await signInWithPassword({ email: defaultLoginEmail || email.trim(), password });
       if (err) {
         setError(err.message || String(err));
         return;
@@ -218,7 +227,7 @@ export function LoginCard({
     } finally {
       setBusy(false);
     }
-  }, [mode, email, password, name, signUp, signInWithPassword, refreshUser]);
+  }, [authMode, defaultLoginEmail, email, password, name, signUp, signInWithPassword, refreshUser]);
 
   const handleResetRequest = useCallback(
     async (e) => {
@@ -297,7 +306,7 @@ export function LoginCard({
   }
 
   const isResetMode = mode === "reset_email" || mode === "reset_confirm";
-  const showOAuthChoices = configLoading || Boolean(oauthProviders.length);
+  const showOAuthChoices = !passwordOnly && (configLoading || Boolean(oauthProviders.length));
 
   return (
     <div className={cn("w-full bg-white dark:bg-oai-gray-950 p-6 transition-colors duration-200", className)}>
@@ -336,7 +345,7 @@ export function LoginCard({
         )}>
           {isResetMode ? copy("reset_password.title") : (title || copy("login_modal.subtitle"))}
         </h2> : null}
-        {!isResetMode && subtitle && (
+        {!isResetMode && subtitle && !passwordOnly && (
           <p className="text-xs text-oai-gray-500 dark:text-oai-gray-400 mt-1.5 leading-relaxed max-w-[320px] mx-auto">
             {subtitle}
           </p>
@@ -519,7 +528,7 @@ export function LoginCard({
           </div> : null}
 
           {/* Email section */}
-          {!emailExpanded ? (
+          {!emailExpanded && !passwordOnly ? (
             <>
               {showOAuthChoices ? <div className="relative mb-5">
                 <div className="absolute inset-0 flex items-center">
@@ -559,7 +568,7 @@ export function LoginCard({
               </div> : null}
 
               {/* Sign in / Sign up toggle */}
-              <div className="flex rounded-lg border border-oai-gray-200 dark:border-oai-gray-800 p-0.5 bg-oai-gray-50 dark:bg-oai-gray-900/50 mb-4">
+              {!passwordOnly && (<div className="flex rounded-lg border border-oai-gray-200 dark:border-oai-gray-800 p-0.5 bg-oai-gray-50 dark:bg-oai-gray-900/50 mb-4">
                 <button
                   type="button"
                   className={cn(
@@ -579,7 +588,7 @@ export function LoginCard({
                   type="button"
                   className={cn(
                     "flex-1 py-1.5 text-xs font-medium rounded-md transition-colors",
-                    mode === "signup"
+                    authMode === "signup"
                       ? "bg-white dark:bg-oai-gray-800 text-oai-black dark:text-white shadow-sm"
                       : "text-oai-gray-500 hover:text-oai-gray-700 dark:hover:text-oai-gray-300",
                   )}
@@ -590,11 +599,11 @@ export function LoginCard({
                 >
                   {copy("login.tab.sign_up")}
                 </button>
-              </div>
+              </div>)}
 
               {/* Email form */}
               <form onSubmit={handleEmailAuth} className="space-y-3">
-                {mode === "signup" && (
+                {authMode === "signup" && (
                   <div>
                     <label htmlFor="card-name" className="block text-xs font-medium text-oai-gray-500 mb-1">
                       {copy("login.field.name")}
@@ -610,7 +619,7 @@ export function LoginCard({
                     />
                   </div>
                 )}
-                <div>
+                {!passwordOnly && (<div>
                   <label htmlFor="card-email" className="block text-xs font-medium text-oai-gray-500 mb-1">
                     {copy("login.field.email")}
                   </label>
@@ -623,7 +632,7 @@ export function LoginCard({
                     onChange={(e) => setEmail(e.target.value)}
                     className="w-full h-10 rounded-lg border border-oai-gray-200 dark:border-oai-gray-800 bg-oai-gray-50 dark:bg-oai-gray-900 px-3 text-sm text-oai-black dark:text-white placeholder-oai-gray-400 dark:placeholder-oai-gray-600 focus:outline-none focus:ring-2 focus:ring-oai-brand-500"
                   />
-                </div>
+                </div>)}
                 <div>
                   <label htmlFor="card-password" className="block text-xs font-medium text-oai-gray-500 mb-1">
                     {copy("login.field.password")}
@@ -631,19 +640,19 @@ export function LoginCard({
                   <input
                     id="card-password"
                     type="password"
-                    autoComplete={mode === "signup" ? "new-password" : "current-password"}
+                    autoComplete={authMode === "signup" ? "new-password" : "current-password"}
                     required
-                    minLength={mode === "signup" ? passwordMinLength : undefined}
+                    minLength={authMode === "signup" ? passwordMinLength : undefined}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     className="w-full h-10 rounded-lg border border-oai-gray-200 dark:border-oai-gray-800 bg-oai-gray-50 dark:bg-oai-gray-900 px-3 text-sm text-oai-black dark:text-white placeholder-oai-gray-400 dark:placeholder-oai-gray-600 focus:outline-none focus:ring-2 focus:ring-oai-brand-500"
                   />
-                  {mode === "signup" && (
+                  {authMode === "signup" && (
                     <p className="mt-1 text-xs text-oai-gray-400 dark:text-oai-gray-600">
                       {copy("login.password_hint", { min: String(passwordMinLength) })}
                     </p>
                   )}
-                  {mode === "signin" && (
+                  {authMode === "signin" && !passwordOnly && (
                     <div className="mt-1 text-right">
                       <button
                         type="button"
@@ -664,7 +673,7 @@ export function LoginCard({
                   disabled={busy}
                   className="w-full h-10 rounded-lg bg-oai-gray-900 dark:bg-white text-white dark:text-oai-gray-950 text-sm font-semibold hover:bg-oai-gray-800 dark:hover:bg-oai-gray-100 transition-colors disabled:opacity-50"
                 >
-                  {mode === "signup" ? copy("login.submit.sign_up") : copy("login.submit.sign_in")}
+                  {authMode === "signup" ? copy("login.submit.sign_up") : copy(passwordOnly ? "login.tab.sign_in" : "login.submit.sign_in")}
                 </button>
               </form>
             </>

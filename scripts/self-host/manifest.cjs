@@ -52,6 +52,7 @@ CREATE TRIGGER self_host_sessions_delete_cache AFTER DELETE ON public.tokentrack
     {id:"11-token-environment-validation",sql:read("migrations/20261008120001_validate-cloud-token-environment.sql")},
     {id:"12-pro-gifts",sql:read("migrations/20261009120000_cloud-gifts.sql")},
     {id:"13-machine-alias-cascade",sql:read("migrations/20261012120000_cloud-machine-alias-cascade.sql")},
+    {id:"14-order-cancellation",sql:read("migrations/20261117090000_cloud-order-cancellation.sql")},
   ];
 }
 module.exports={root,read,functionSql,privateFunctions,steps};

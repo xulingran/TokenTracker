@@ -2,7 +2,7 @@
 
 The local branch now contains a clean TokenTracker application installer and a private-function deployment manifest. They install free private synchronization on a compatible InsForge instance. They do not create the InsForge platform or complete VPS, browser, or packaged desktop acceptance.
 
-Reconciled on 2026-10-09. The current manifest has 14 application steps, including the gift schema needed by the shared billing handler; self-hosted gifts and paid checkout remain unavailable. The official-stack 13-step results below are historical, while the gift-stage 14-step installer/reinstall results used a separate isolated PostgreSQL database. Neither unchanged reinstall is proof of an upgrade from 13 to 14 steps. See the [release handoff](cloud-release-readiness.md) and [remaining acceptance](self-hosting-remaining-acceptance.md) for current gates.
+Reconciled on 2026-11-21. The current manifest has 16 application steps, including the gift schema and the order-cancellation schema needed by the shared billing handler; self-hosted gifts and paid checkout remain unavailable. The official-stack 13/14-step results below are historical, not proof of an upgrade to the current manifest. See the [release handoff](cloud-release-readiness.md) and [remaining acceptance](self-hosting-remaining-acceptance.md) for current gates.
 
 InsForge provides its own PostgreSQL/auth/API/function runtime. Install it in a separate directory using a reviewed release and pinned image digests. Its official README documents MCP support for self-hosted administration; the cloud CLI is not a VPS installer. [Official platform instructions](https://github.com/InsForge/InsForge#self-hosted-docker-compose)
 
@@ -43,7 +43,7 @@ Confirm `current.project.oss_host` is your own instance before applying. Use a f
 
 The manifest installs device identities/tokens/codes, raw hourly usage, account-level session snapshots, owner-scoped usage cache invalidation, the private aggregation RPCs and the current Cloud contract. Financial tables exist for API compatibility but contain no merchant credentials or sample orders. Waffo authorization audits are included as schema only. Public leaderboards, avatars and production moderation data are outside this private backend package. Archival is not enabled; retained private history stays in PostgreSQL until the instance owner installs a separately verified retention strategy.
 
-The 2026-10-09 Pro gift-code update adds a fourteenth installation step. Gifts remain unavailable in self-hosted mode; private synchronization stays free. A fresh isolated PostgreSQL15.18 database with synthetic auth bootstrap passed the real 14-step installer and unchanged reinstall. The actual billing handler and SDK returned free account/catalog responses and rejected gift redemption, with no privacy table, orders, payments or gift grants. This narrow check does not replace the earlier real InsForge authentication and browser evidence below.
+The 2026-11-21 order-cancellation update adds the sixteenth installation step. It supplies the cancellation columns and receipts read by the shared billing handler; without it, the account endpoint fails on `cancel_requested_at`. The current 16-step installer and unchanged reinstall pass the self-host test suite, including the billing account response, two-user private access, device flow and RLS checks. Gifts remain unavailable in self-hosted mode; private synchronization stays free. This narrow check does not replace the earlier real InsForge authentication and browser evidence below.
 
 ## Explicit free instance policy
 
@@ -79,6 +79,39 @@ On the verified official v2.3.3 stack, the generated handler reads reserved `INS
 Build the dashboard with its own `VITE_INSFORGE_BASE_URL` and `VITE_INSFORGE_ANON_KEY`. Keep API/database credentials and signing secrets on the server. Client instance selection, credential clearing and packaged desktop routing require their own verification; this backend package does not change an existing desktop binary.
 
 The 1.3.1 desktop client starts OAuth with the exact `tokentracker://auth/callback` redirect. Allow that URI on your own InsForge instance when enabling its OAuth provider. Web sign-in also needs your own dashboard origin and its `/dashboard` callback in the redirect list. The desktop flow keeps PKCE in its original WebView and no longer depends on an arbitrary loopback port or an official hosted relay. Verify the actual provider return and code exchange on the selected instance before marking native sign-in supported.
+
+## Optional trusted-LAN HTTP without a domain
+
+For an isolated home/lab LAN, the application also supports an explicit private-IP HTTP mode. This avoids a domain and certificate, but traffic is not encrypted; use it only on a trusted network. The default remains HTTPS (with loopback HTTP for local development), and public HTTP URLs are still rejected even when the mode is enabled.
+
+Use three separate settings for the three different processes:
+
+```dotenv
+# NAS: runtime environment of the deployed device-authorize function
+TOKENTRACKER_ALLOW_PRIVATE_HTTP=1
+TOKENTRACKER_DASHBOARD_URL=http://192.168.1.20:8080
+
+# Dashboard build machine: baked into the static bundle at build time
+VITE_INSFORGE_BASE_URL=http://192.168.1.20:7130
+VITE_INSFORGE_ANON_KEY=your-instance-public-anon-key
+VITE_TOKENTRACKER_ALLOW_PRIVATE_HTTP=1
+```
+
+The Dashboard must be rebuilt after changing its `VITE_` setting. The function setting belongs to the NAS function worker, not the shell that runs `build-functions.cjs`. The generated `functions.json` lists both settings separately.
+
+On each client, make the same explicit choice once:
+
+```sh
+tokentracker init \
+  --base-url http://192.168.1.20:7130 \
+  --dashboard-url http://192.168.1.20:8080 \
+  --anon-key-file /private/path/anon-key \
+  --allow-private-http
+```
+
+For a headless client, use `tokentracker device-login` with the same URL arguments and `--allow-private-http`. The CLI saves `allowPrivateHttp: true` in its local `config.json`, so subsequent `serve`, hook and background-sync processes retain the choice. Do not copy this setting or a device token between accounts or instances.
+
+Only literal private addresses are accepted: RFC1918 IPv4, loopback, link-local and IPv6 ULA/link-local addresses. Hostnames such as `nas.local`, public IPs and CGNAT addresses are not accepted. This switch does not bypass browser mixed-content/CORS rules or the local dashboard's loopback Origin checks; serve the NAS Dashboard and API over the same HTTP LAN scheme, and keep the CLI's own port bound to loopback.
 
 ## Back up and restore an instance
 

@@ -71,7 +71,7 @@ async function cmdDeviceLogin(argv = [], options = {}) {
   if (opts.anonKeyFile) opts.anonKey = (await fs.readFile(opts.anonKeyFile, "utf8")).trim();
   const runtime = assertInsforgeRuntime(resolveRuntimeConfig({
     cli: { baseUrl: opts.baseUrl || process.env.TOKENTRACKER_BASE_URL || process.env.TOKENTRACKER_API_URL,
-      anonKey: opts.anonKey, dashboardUrl: opts.dashboardUrl }, config, env: process.env,
+      anonKey: opts.anonKey, dashboardUrl: opts.dashboardUrl, allowPrivateHttp: opts.allowPrivateHttp }, config, env: process.env,
   }));
   const baseUrl = runtime.baseUrl;
 
@@ -94,8 +94,8 @@ async function cmdDeviceLogin(argv = [], options = {}) {
     }
   }
   await updateJsonLocked(configPath, async current => {
-    const previous = resolveRuntimeConfig({ config, env: {} });
-    const latest = resolveRuntimeConfig({ config: current, env: {} });
+    const previous = resolveRuntimeConfig({ config, env: {}, cli: { allowPrivateHttp: runtime.allowPrivateHttp } });
+    const latest = resolveRuntimeConfig({ config: current, env: {}, cli: { allowPrivateHttp: runtime.allowPrivateHttp } });
     if ((latest.baseUrl !== previous.baseUrl || latest.anonKey !== previous.anonKey) &&
         (latest.baseUrl !== baseUrl || latest.anonKey !== runtime.anonKey)) {
       throw new Error("Backend instance changed during device login");
@@ -103,7 +103,8 @@ async function cmdDeviceLogin(argv = [], options = {}) {
     const changedInstance = previous.baseUrl !== baseUrl || previous.anonKey !== runtime.anonKey;
     if (changedInstance) resetInstanceState(trackerDir);
     return { ...(changedInstance ? clearDeviceIdentity(current) : current), baseUrl,
-      anonKey: runtime.anonKey, dashboardUrl: runtime.dashboardUrl };
+      anonKey: runtime.anonKey, dashboardUrl: runtime.dashboardUrl,
+      ...(runtime.allowPrivateHttp ? { allowPrivateHttp: true } : {}) };
   });
 
   if (opts.json) {
@@ -157,7 +158,7 @@ async function cmdDeviceLogin(argv = [], options = {}) {
         throw new Error("device login approved but server did not return a device token");
       }
       await updateJsonLocked(configPath, async (current) => {
-        if (normalizeInstanceBaseUrl(current.baseUrl) !== baseUrl || current.anonKey !== runtime.anonKey) {
+        if (normalizeInstanceBaseUrl(current.baseUrl, { allowPrivateHttp: runtime.allowPrivateHttp }) !== baseUrl || current.anonKey !== runtime.anonKey) {
           throw new Error("Backend instance changed during device login");
         }
         return { ...current,
@@ -185,7 +186,7 @@ async function cmdDeviceLogin(argv = [], options = {}) {
 }
 
 function parseArgs(argv) {
-  const out = { json: false, baseUrl: null, anonKey: null, anonKeyFile: null, dashboardUrl: null };
+  const out = { json: false, baseUrl: null, anonKey: null, anonKeyFile: null, dashboardUrl: null, allowPrivateHttp: null };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--json") out.json = true;
@@ -197,6 +198,8 @@ function parseArgs(argv) {
       out.anonKeyFile = argv[++i] || null;
     } else if (a === "--dashboard-url") {
       out.dashboardUrl = argv[++i] || null;
+    } else if (a === "--allow-private-http") {
+      out.allowPrivateHttp = true;
     } else throw new Error(`Unknown option: ${a}`);
   }
   return out;

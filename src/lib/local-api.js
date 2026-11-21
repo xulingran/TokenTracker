@@ -1257,7 +1257,7 @@ function createLocalApiHandler({ queuePath, serverVersion = null, trackerDataDir
         if (trackerDataDir !== path.dirname(qp)) resetInstanceState(trackerDataDir);
         accountViewFailures.clear(); accountViewInFlight.clear();
         if (["deviceToken", "deviceId", "user_id"].some(key => config?.[key]) &&
-            normalizeInstanceBaseUrl(config.deviceTokenBaseUrl) !== runtime.baseUrl) {
+            normalizeInstanceBaseUrl(config.deviceTokenBaseUrl, { allowPrivateHttp: runtime.allowPrivateHttp }) !== runtime.baseUrl) {
           config = clearDeviceIdentity(config);
           writeJsonAtomicSync(runtimeConfigPath, config);
           runtime.deviceToken = null;
@@ -1932,7 +1932,7 @@ function createLocalApiHandler({ queuePath, serverVersion = null, trackerDataDir
     }
     const selectedRuntime = getRuntime();
     const callerInstance = req.headers?.["x-tokentracker-instance"];
-    if (callerInstance && normalizeInstanceBaseUrl(callerInstance) !== selectedRuntime.baseUrl) {
+    if (callerInstance && normalizeInstanceBaseUrl(callerInstance, { allowPrivateHttp: selectedRuntime.allowPrivateHttp }) !== selectedRuntime.baseUrl) {
       json(res, { code: "instance_changed", error: "The configured backend instance changed. Reload and sign in again." }, 409);
       return true;
     }
@@ -1944,9 +1944,11 @@ function createLocalApiHandler({ queuePath, serverVersion = null, trackerDataDir
     }
     if (p === "/api/runtime-config.js") {
       if (String(req.method).toUpperCase() !== "GET") { json(res, { error: "Method Not Allowed" }, 405); return true; }
-      const descriptor = { baseUrl: normalizeInstanceBaseUrl(selectedRuntime.baseUrl) || "",
+      const descriptor = { baseUrl: normalizeInstanceBaseUrl(selectedRuntime.baseUrl, { allowPrivateHttp: selectedRuntime.allowPrivateHttp }) || "",
         anonKey: selectedRuntime.configurationError ? null : selectedRuntime.anonKey,
-        dashboardUrl: normalizeInstanceBaseUrl(selectedRuntime.dashboardUrl) || "", configurationError: selectedRuntime.configurationError };
+        dashboardUrl: normalizeInstanceBaseUrl(selectedRuntime.dashboardUrl, { allowPrivateHttp: selectedRuntime.allowPrivateHttp }) || "",
+        allowPrivateHttp: selectedRuntime.allowPrivateHttp === true,
+        configurationError: selectedRuntime.configurationError };
       const value = JSON.stringify(descriptor).replace(/</g, "\\u003c").replace(/\u2028/g, "\\u2028").replace(/\u2029/g, "\\u2029");
       res.writeHead(200, { "Content-Type": "application/javascript; charset=utf-8", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" });
       res.end(`window.__TOKENTRACKER_RUNTIME_CONFIG__=${value};`);

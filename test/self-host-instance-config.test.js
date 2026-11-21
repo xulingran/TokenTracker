@@ -105,6 +105,18 @@ async function local(t, { cloudSync = false } = {}) {
   return { directory, queue, history, base, config, request };
 }
 
+test("local API advertises private HTTP only after the saved opt-in and keeps LAN origins out of loopback auth", async t => {
+  const app = await local(t);
+  const baseUrl = "http://192.168.1.20:7130";
+  await app.config({ baseUrl, dashboardUrl: "http://192.168.1.20:8080", anonKey: opaque(40), allowPrivateHttp: true });
+  const response = await app.request("/api/runtime-config.js");
+  const context = { window: {} };
+  vm.runInNewContext(await response.text(), context);
+  assert.equal(context.window.__TOKENTRACKER_RUNTIME_CONFIG__.baseUrl, baseUrl);
+  assert.equal(context.window.__TOKENTRACKER_RUNTIME_CONFIG__.allowPrivateHttp, true);
+  assert.equal((await app.request("/api/auth/refresh", {}, { Origin: "http://192.168.1.20:8080" })).status, 403);
+});
+
 test("pure runtime parsing binds custom public keys and credentials to their selected instance", async () => {
   const before = fssync.existsSync(path.join(process.cwd(), "runtime-instance.json"));
   const a = "https://a.example.test"; const b = "https://b.example.test";
@@ -357,4 +369,32 @@ test("device login uses the persisted custom public key and returns only its own
   assert.equal(saved.deviceToken, "device-B"); assert.equal(saved.deviceTokenBaseUrl, b.base);
   assert.ok(output.join("").includes(b.base + "/device")); assert.ok(!output.join("").includes("tokentracker.cc/device"));
   assert.ok(b.calls.every(call => call.headers.apikey === b.anon));
+});
+
+test("CLI init saves the private HTTP choice for later processes without resetting the same device", async t => {
+  const home = await fs.mkdtemp(path.join(os.tmpdir(), "tt-private-init-"));
+  t.after(() => fs.rm(home, { recursive: true, force: true }));
+  const tracker = path.join(home, ".tokentracker", "tracker");
+  await fs.mkdir(tracker, { recursive: true });
+  const configPath = path.join(tracker, "config.json");
+  const baseUrl = "http://192.168.1.20:7130";
+  const dashboardUrl = "http://192.168.1.20:8080";
+  const anonKey = opaque(40);
+  const env = { PATH: process.env.PATH, HOME: home, USERPROFILE: home,
+    CODEX_HOME: path.join(home, ".codex"), OPENCODE_CONFIG_DIR: path.join(home, ".config", "opencode"),
+    TOKENTRACKER_SKIP_LOCAL_RUNTIME_COPY: "1", TOKENTRACKER_SKIP_FIRST_SYNC: "1", TOKENTRACKER_SKIP_OPENCLAW_CLI: "1" };
+  for (const key of ["SYSTEMROOT", "WINDIR", "COMSPEC", "TMPDIR", "TEMP", "TMP"]) if (process.env[key]) env[key] = process.env[key];
+  const run = args => promisify(execFile)(process.execPath,
+    [path.join(__dirname, "..", "bin", "tracker.js"), "init", "--yes", "--no-auth", "--no-open", ...args],
+    { env, cwd: home, timeout: 15000 });
+  const args = ["--base-url", baseUrl, "--dashboard-url", dashboardUrl, "--anon-key", anonKey];
+  await run([...args, "--allow-private-http"]);
+  let saved = JSON.parse(await fs.readFile(configPath, "utf8"));
+  assert.equal(saved.baseUrl, baseUrl); assert.equal(saved.allowPrivateHttp, true);
+  await fs.writeFile(configPath, JSON.stringify({ ...saved, deviceToken: "device-LAN", deviceTokenBaseUrl: baseUrl,
+    deviceId: "device-LAN", user_id: "user-LAN" }));
+  await run(args);
+  saved = JSON.parse(await fs.readFile(configPath, "utf8"));
+  assert.equal(saved.allowPrivateHttp, true); assert.equal(saved.deviceToken, "device-LAN");
+  assert.equal(saved.deviceId, "device-LAN"); assert.equal(saved.user_id, "user-LAN");
 });

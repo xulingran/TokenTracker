@@ -10,6 +10,8 @@ interface ImportMetaEnv {
   readonly VITE_TOKENTRACKER_MOCK_MISSING?: string;
   readonly VITE_TOKENTRACKER_BACKEND_BASE_URL?: string;
   readonly VITE_TOKENTRACKER_BACKEND_ANON_KEY?: string;
+  readonly VITE_TOKENTRACKER_ALLOW_PRIVATE_HTTP?: string;
+  readonly VITE_TOKENTRACKER_DEFAULT_LOGIN_EMAIL?: string;
   readonly VITE_INSFORGE_BASE_URL?: string;
   readonly VITE_INSFORGE_ANON_KEY?: string;
   readonly VITE_SENTRY_DSN?: string;

@@ -58,7 +58,11 @@ A static web build uses the existing variables:
 ```dotenv
 VITE_INSFORGE_BASE_URL=https://api.your-domain.example
 VITE_INSFORGE_ANON_KEY=your-instance-public-anon-key
+# Optional fixed single-user deployment: show only a password field at login
+# VITE_TOKENTRACKER_DEFAULT_LOGIN_EMAIL=owner@your-domain.example
 ```
+
+`VITE_TOKENTRACKER_DEFAULT_LOGIN_EMAIL` is only for a deliberately fixed single-user instance. The backend still authenticates with that full email, while the login card shows only a password field and hides email, OAuth, sign-up and forgot-password entry points. It does not bypass authentication and must never be used to store a password; never put a password in any `VITE_` variable. Leave it unset for the normal multi-user login UI.
 
 Use your instance's public anonymous key. InsForge v2.3.3 creates an opaque `anon_` key with 40 or 64 lowercase hex characters; older instances may use a JWT whose role is `anon`. The backend verifies the actual key, not merely its prefix. A custom URL without its own key fails closed and never falls back to the official key. Admin, service-role, user JWTs and private keys are rejected; the Vite build stops without logging the supplied value. The official default remains available when no custom endpoint is configured. The legacy `VITE_TOKENTRACKER_BACKEND_BASE_URL`/`VITE_TOKENTRACKER_BACKEND_ANON_KEY` pair is also supported. [Official key verification](https://github.com/InsForge/InsForge/blob/v2.3.3/backend/src/services/secrets/secret.service.ts#L637-L718).
 
@@ -73,6 +77,14 @@ Only same-origin localhost SDK proxy requests use `x-tokentracker-instance`; dir
 With the server's explicit `self_hosted` policy, the UI shows a free private instance without official pricing, trials or payment portals. Server operators manage capacity, backups and history retention. Public Profile features are disabled by default on the private path and do not publish to the official service.
 
 The released desktop bundles still need the matching CLI/dashboard release. Verify the actual device-authorization URL against your own dashboard; the existing edge source's official URL must not send self-hosted authorization to the official account system. Browser/native authorization, two-instance credential isolation and a fresh VPS remain release gates. A frontend build alone does not complete them.
+
+## Optional trusted-LAN HTTP
+
+For an isolated home/lab LAN, you can explicitly use a private IP over plain HTTP instead of a domain and certificate. This is disabled by default, does not permit public HTTP URLs, and leaves all traffic unencrypted; use it only on a trusted network.
+
+Set `TOKENTRACKER_ALLOW_PRIVATE_HTTP=1` in the NAS function worker's runtime environment and set `TOKENTRACKER_DASHBOARD_URL=http://192.168.1.20:8080`. Build the static Dashboard with `VITE_TOKENTRACKER_ALLOW_PRIVATE_HTTP=1`, `VITE_INSFORGE_BASE_URL=http://192.168.1.20:7130`, and your instance's public anon key. The Vite setting requires a rebuild; the function setting belongs to the NAS worker, not the build shell.
+
+On each client, run `tokentracker init` (or `device-login` for headless machines) with the same HTTP URLs and `--allow-private-http`. The explicit choice is saved as `allowPrivateHttp: true` in the local `config.json`, so later `serve`, hooks and background sync retain it. Only private IP literals (RFC1918, loopback, link-local and IPv6 ULA/link-local) are accepted; `nas.local`, public IPs and CGNAT addresses are not. This does not bypass browser CORS/mixed-content rules or the local loopback Origin checks. See [the backend installation guide](self-hosting-backend.md#optional-trusted-lan-http-without-a-domain) for the complete example.
 
 ## Verify before calling the installation ready
 

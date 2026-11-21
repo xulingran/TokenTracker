@@ -21,7 +21,7 @@ const PROD_INSFORGE_ANON_KEY =
 export const INSFORGE_INSTANCE_CHANGED_EVENT = "tt.insforgeInstanceChanged";
 const INSTANCE_STORAGE_KEY = "tt.insforge.instance";
 type RuntimeConfiguration = {
-  baseUrl?: string; anonKey?: string; dashboardUrl?: string; configurationError?: string;
+  baseUrl?: string; anonKey?: string; dashboardUrl?: string; allowPrivateHttp?: boolean; configurationError?: string;
 };
 declare global {
   interface Window { __TOKENTRACKER_RUNTIME_CONFIG__?: RuntimeConfiguration; }
@@ -32,22 +32,28 @@ function localHost() {
 }
 export function getInsforgeConfiguration() {
   const runtime = typeof window === "undefined" ? undefined : window.__TOKENTRACKER_RUNTIME_CONFIG__;
+  const env = typeof import.meta !== "undefined" ? import.meta.env : undefined;
+  const allowPrivateHttp = env?.VITE_TOKENTRACKER_ALLOW_PRIVATE_HTTP === "1" || runtime?.allowPrivateHttp === true;
   if (runtime !== undefined) {
     if (!runtime || runtime.configurationError || !runtime.baseUrl) {
       return { baseUrl: "", anonKey: "", errorCode: "runtime_configuration_error", source: "runtime" as const };
     }
     return { ...validateInsforgeDeployment({ baseUrl: runtime.baseUrl, anonKey: runtime.anonKey,
-      strictPair: true, defaultBaseUrl: PROD_INSFORGE_BASE_URL, defaultAnonKey: PROD_INSFORGE_ANON_KEY }), source: "runtime" as const };
+      strictPair: true, allowPrivateHttp, defaultBaseUrl: PROD_INSFORGE_BASE_URL, defaultAnonKey: PROD_INSFORGE_ANON_KEY }), source: "runtime" as const };
   }
-  const env = typeof import.meta !== "undefined" ? import.meta.env : undefined;
   return { ...validateInsforgeDeployment({
     baseUrl: env?.VITE_INSFORGE_BASE_URL || env?.VITE_TOKENTRACKER_BACKEND_BASE_URL,
     anonKey: env?.VITE_INSFORGE_ANON_KEY || env?.VITE_TOKENTRACKER_BACKEND_ANON_KEY,
+    allowPrivateHttp,
     defaultBaseUrl: PROD_INSFORGE_BASE_URL, defaultAnonKey: PROD_INSFORGE_ANON_KEY,
   }), source: "build" as const };
 }
 export function getInsforgeConfigurationError(): string | null {
   return getInsforgeConfiguration().errorCode;
+}
+export function getDefaultLoginEmail(): string {
+  const env = typeof import.meta !== "undefined" ? import.meta.env : undefined;
+  return env?.VITE_TOKENTRACKER_DEFAULT_LOGIN_EMAIL?.trim() || "";
 }
 export function getInsforgeRemoteUrl(): string { return getInsforgeConfiguration().baseUrl; }
 export function getInsforgeAnonKey(): string { return getInsforgeConfiguration().anonKey; }
