@@ -4,6 +4,9 @@ name: build (macOS arm64 artifact)
 # TokenTracker.app for Apple Silicon plus a DMG and an app zip, uploaded as
 # workflow artifacts. It never creates tags, releases, or npm publishes.
 on:
+  push:
+    branches:
+      - "build/macos-arm64-*"
   workflow_dispatch:
     inputs:
       ref:
