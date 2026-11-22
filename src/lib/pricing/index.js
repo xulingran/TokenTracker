@@ -14,6 +14,7 @@ const {
   buildLitellmPerMillionMap,
 } = require("./matcher");
 const { loadLitellmData } = require("./litellm-fetcher");
+const { normalizePricingOverride } = require("./overrides");
 
 const ZERO_PRICING = { input: 0, output: 0, cache_read: 0, cache_write: 0 };
 const PI_SUBSCRIPTION_SOURCES = new Set([
@@ -62,6 +63,8 @@ const state = {
   litellmRawMap: seedRaw, // raw per-token; field shape from LiteLLM JSON
   litellmPerMillionMap: buildLitellmPerMillionMap(seedRaw), // USD/MTok
   source: Object.keys(seedRaw).length ? "seed-snapshot:sync" : null,
+  userOverrideItems: [],
+  userOverrides: { exact: {}, source_exact: {} },
   // negativeCache prevents re-walking the LiteLLM map for models we've already
   // determined are unknown. Cleared on every reload.
   negativeCache: new Set(),
@@ -94,6 +97,43 @@ async function ensurePricingLoaded(opts = {}) {
   return state.loadingPromise;
 }
 
+function applyUserPricingOverrides(items = []) {
+  if (!Array.isArray(items)) throw new Error("pricing overrides must be an array");
+  const exact = Object.create(null);
+  const sourceExact = Object.create(null);
+  const normalizedItems = items.map((item) => normalizePricingOverride(item));
+  for (const item of normalizedItems) {
+    const rates = {
+      input: item.input,
+      output: item.output,
+      cache_read: item.cache_read,
+      cache_write: item.cache_write,
+    };
+    if (item.source) {
+      sourceExact[item.source] ||= Object.create(null);
+      sourceExact[item.source][item.model] = rates;
+    } else {
+      exact[item.model] = rates;
+    }
+  }
+  state.userOverrideItems = normalizedItems;
+  state.userOverrides = { exact, source_exact: sourceExact };
+  state.revision += 1;
+  state.negativeCache.clear();
+  return normalizedItems;
+}
+
+function hasUserPricingOverride(model, source) {
+  if (!model || !state.userOverrideItems.length) return false;
+  const result = lookupPricing(model, {
+    curated: { exact: {}, alias: {}, fuzzy: [], source_exact: {} },
+    litellm: {},
+    source,
+    overrides: state.userOverrides,
+  });
+  return result.hit && result.source.startsWith("user:");
+}
+
 // For tests: drop loaded state so a fresh call can re-load. Seeds with the
 // bundled snapshot so getModelPricing() still works without ensurePricingLoaded.
 function resetPricingForTests() {
@@ -102,6 +142,8 @@ function resetPricingForTests() {
   state.litellmRawMap = seedRaw;
   state.litellmPerMillionMap = buildLitellmPerMillionMap(seedRaw);
   state.source = Object.keys(seedRaw).length ? "seed-snapshot:sync" : null;
+  state.userOverrideItems = [];
+  state.userOverrides = { exact: {}, source_exact: {} };
   state.revision += 1;
   state.negativeCache.clear();
 }
@@ -125,6 +167,7 @@ function getModelPricing(model, opts = {}) {
     curated: curatedOverrides,
     litellm: state.litellmPerMillionMap,
     source: lookupSource,
+    overrides: state.userOverrides,
   });
   if (result.hit) {
     const value = result.value;
@@ -152,9 +195,11 @@ const pricingInfoCache = { revision: -1, entries: new Map() };
 // Preserve matcher provenance: a known zero rate is free, a missing model is
 // unpriced. Both return zero dollars, but they mean different things in the UI.
 function getModelPricingInfo(model, opts = {}) {
-  if (hasUnknownBackendCost(opts)) return { status: "unpriced", source: null, ...ZERO_PRICING };
   const source = typeof opts === "string" ? opts : opts.source;
   const sourceKey = typeof source === "string" ? source.toLowerCase() : null;
+  if (hasUnknownBackendCost(opts) && !hasUserPricingOverride(model, sourceKey)) {
+    return { status: "unpriced", source: null, ...ZERO_PRICING };
+  }
   if (pricingInfoCache.revision !== state.revision) {
     pricingInfoCache.revision = state.revision;
     pricingInfoCache.entries.clear();
@@ -181,6 +226,7 @@ function computeModelPricingInfo(model, opts, sourceKey) {
     curated: curatedOverrides,
     litellm: state.litellmPerMillionMap,
     source: sourceKey,
+    overrides: state.userOverrides,
   });
   const rates = getModelPricing(model, opts);
   return {
@@ -359,7 +405,7 @@ function speedTierSubsetCost(row, prefix, pricing, ctx) {
 // computeRowCost in src/lib/local-api.js. Moved here so vite mock + local
 // server share one source of truth.
 function computeRowCost(row) {
-  if (hasUnknownBackendCost(row)) {
+  if (hasUnknownBackendCost(row) && !hasUserPricingOverride(row?.model, row?.source)) {
     // Existing totals without provenance retain their historical estimate. Only
     // the custom-gateway subset is excluded from model pricing.
     const priced = { ...row, backend_usage: undefined };
@@ -498,6 +544,78 @@ function computeRowTierCosts(row) {
   return { standard, priority, ultrafast };
 }
 
+function catalogEntry(model, source = null) {
+  const info = getModelPricingInfo(model, source ? { source } : {});
+  const origin = info.source?.startsWith("user:")
+    ? "custom"
+    : info.source?.startsWith("curated:")
+      ? "curated"
+      : info.source?.startsWith("litellm:")
+        ? "litellm"
+        : "other";
+  return {
+    model,
+    source: source || null,
+    status: info.status,
+    origin,
+    pricing_source: info.source,
+    overridden: origin === "custom",
+    input: info.input,
+    output: info.output,
+    cache_read: info.cache_read,
+    cache_write: info.cache_write,
+    ...(Number.isFinite(Number(info.priority_multiplier))
+      ? { priority_multiplier: Number(info.priority_multiplier) }
+      : null),
+    ...(Number.isFinite(Number(info.ultrafast_multiplier))
+      ? { ultrafast_multiplier: Number(info.ultrafast_multiplier) }
+      : null),
+  };
+}
+
+function listPricingCatalog({ q = "", source = "", origin = "", limit = 100, offset = 0 } = {}) {
+  const candidates = new Map();
+  const add = (model, provider = null) => {
+    const key = `${provider || ""}\0${model.toLowerCase()}`;
+    if (!candidates.has(key)) candidates.set(key, { model, source: provider });
+  };
+  for (const model of Object.keys(state.litellmPerMillionMap)) add(model);
+  for (const model of Object.keys(curatedOverrides.exact || {})) add(model);
+  for (const [provider, entries] of Object.entries(curatedOverrides.source_exact || {})) {
+    for (const model of Object.keys(entries)) add(model, provider);
+  }
+  for (const item of state.userOverrideItems) add(item.model, item.source);
+
+  const query = String(q || "").trim().toLowerCase();
+  const providerFilter = String(source || "").trim().toLowerCase();
+  let filtered = [...candidates.values()].filter((item) => {
+    if (providerFilter && String(item.source || "").toLowerCase() !== providerFilter) return false;
+    return !query || item.model.toLowerCase().includes(query) || String(item.source || "").toLowerCase().includes(query);
+  });
+  filtered.sort((a, b) => a.model.localeCompare(b.model) || String(a.source || "").localeCompare(String(b.source || "")));
+  if (origin) {
+    filtered = filtered.map((item) => catalogEntry(item.model, item.source))
+      .filter((item) => item.origin === origin);
+  }
+
+  const parsedLimit = Number(limit);
+  const parsedOffset = Number(offset);
+  const safeLimit = Number.isFinite(parsedLimit) ? Math.min(200, Math.max(1, Math.trunc(parsedLimit))) : 100;
+  const safeOffset = Number.isFinite(parsedOffset) ? Math.max(0, Math.trunc(parsedOffset)) : 0;
+  const items = filtered.slice(safeOffset, safeOffset + safeLimit)
+    .map((item) => item.origin ? item : catalogEntry(item.model, item.source));
+  return {
+    loaded: state.loaded,
+    pricing_source: state.source,
+    revision: state.revision,
+    override_count: state.userOverrideItems.length,
+    total: filtered.length,
+    offset: safeOffset,
+    limit: safeLimit,
+    items,
+  };
+}
+
 // Backwards-compatible MODEL_PRICING export. Test at
 // test/model-breakdown.test.js:236 reads `localApi.MODEL_PRICING["kiro-agent"]`
 // and expects { input, output, cache_read, cache_write } shape. We expose the
@@ -508,9 +626,11 @@ const MODEL_PRICING = curatedOverrides.exact;
 
 module.exports = {
   ensurePricingLoaded,
+  applyUserPricingOverrides,
   getPricingRevision,
   getModelPricing,
   getModelPricingInfo,
+  listPricingCatalog,
   getRowPricing,
   computeRowCost,
   computeRowTierCosts,

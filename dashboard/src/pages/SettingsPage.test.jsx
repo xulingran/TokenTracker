@@ -18,6 +18,10 @@ const nativeSettingsMock = vi.hoisted(() => ({
 const proxySettingsMock = vi.hoisted(() => ({
   available: false,
 }));
+const modelPricingMock = vi.hoisted(() => ({
+  available: false,
+  active: null,
+}));
 const profileSettingsMock = vi.hoisted(() => ({
   settings: { enabled: false, signedIn: false, userId: "shared-settings-user" },
   hook: vi.fn(), accountReceived: null, cloudReceived: null, cloudActive: null, navigate: null,
@@ -43,6 +47,8 @@ const LABELS = {
   "settings.section.labs.description": "Experimental insights",
   "settings.section.network": "Network",
   "settings.section.network.description": "Proxy configuration",
+  "settings.section.model_pricing": "Model Pricing",
+  "settings.section.model_pricing.description": "Model rates and custom prices",
   "settings.limits.providers": "Providers",
   "limits.settings.display_mode_label": "Usage Display",
   "settings.menubar.toastOnReset": "Toast on limits reset",
@@ -87,6 +93,13 @@ vi.mock("../hooks/use-proxy-settings.js", () => ({
   }),
 }));
 
+vi.mock("../hooks/use-model-pricing-settings.js", () => ({
+  useModelPricingSettings: () => ({
+    available: modelPricingMock.available,
+    loading: false,
+  }),
+}));
+
 vi.mock("../components/settings/AppearanceSection.jsx", () => ({
   AppearanceSection: () => <div data-testid="appearance-content" />,
 }));
@@ -112,6 +125,13 @@ vi.mock("../components/settings/LabsSection.jsx", () => ({
 
 vi.mock("../components/settings/NetworkSection.jsx", () => ({
   NetworkSection: () => <div data-testid="network-content" />,
+}));
+
+vi.mock("../components/settings/PricingSection.jsx", () => ({
+  PricingSection: ({ active }) => {
+    modelPricingMock.active = active;
+    return <div data-testid="model-pricing-content" />;
+  },
 }));
 
 vi.mock("../components/LimitsSettingsPanel.jsx", () => ({
@@ -167,6 +187,8 @@ describe("SettingsPage category navigation", () => {
     };
     nativeSettingsMock.setSetting.mockReset();
     proxySettingsMock.available = false;
+    modelPricingMock.available = false;
+    modelPricingMock.active = null;
     profileSettingsMock.hook.mockReset();
     profileSettingsMock.accountReceived = null;
     profileSettingsMock.cloudReceived = null;
@@ -273,6 +295,25 @@ describe("SettingsPage category navigation", () => {
     expect(screen.getByRole("button", { name: "Network" })).toBeInTheDocument();
     expect(container.querySelector('[data-settings-panel="network"]')).not.toBeNull();
     expect(screen.getByTestId("network-content")).toBeInTheDocument();
+  });
+
+  it("omits model pricing when the local pricing API is unavailable", () => {
+    modelPricingMock.available = false;
+    const { container } = renderSettings("/settings?section=model-pricing");
+
+    expect(screen.queryByRole("button", { name: "Model Pricing" })).not.toBeInTheDocument();
+    expect(container.querySelector('[data-settings-panel="model-pricing"]')).toBeNull();
+    expect(screen.getByRole("button", { name: "Appearance" })).toHaveAttribute("aria-current", "page");
+  });
+
+  it("shows and deep-links model pricing when the local API is available", () => {
+    modelPricingMock.available = true;
+    const { container } = renderSettings("/settings?section=model-pricing");
+
+    expect(screen.getByRole("button", { name: "Model Pricing" })).toHaveAttribute("aria-current", "page");
+    expect(container.querySelector('[data-settings-panel="model-pricing"]')).not.toHaveAttribute("hidden");
+    expect(screen.getByTestId("model-pricing-content")).toBeInTheDocument();
+    expect(modelPricingMock.active).toBe(true);
   });
 
   it("omits the native-app category when the native bridge is unavailable", () => {

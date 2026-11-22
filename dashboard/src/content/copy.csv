@@ -478,6 +478,49 @@ settings.network.effective.blocked,ui,SettingsPage,NetworkSection,effective_bloc
 settings.network.apply_error,ui,SettingsPage,NetworkSection,apply_error,"The saved proxy could not be applied: {{error}}. The proxy is not in effect and outbound traffic is blocked. Check your proxy settings.",,active
 settings.network.save_error,ui,SettingsPage,NetworkSection,save_error,"Could not save proxy settings: {{error}}",,active
 settings.network.save_error_unprotected,ui,SettingsPage,NetworkSection,save_error_unprotected,"Could not save proxy settings: {{error}}. Outbound traffic is currently unprotected — even blocking it failed.",,active
+settings.section.model_pricing,ui,SettingsPage,PricingSection,sec_model_pricing,"Model Pricing",,active
+settings.section.model_pricing.description,ui,SettingsPage,PricingSection,sec_model_pricing_description,"View acquired model rates and configure local price overrides.",,active
+settings.model_pricing.subtitle,ui,SettingsPage,PricingSection,subtitle,"View current model rates and define custom prices. All rates are USD per 1 million tokens.",,active
+settings.model_pricing.scope,ui,SettingsPage,PricingSection,scope,"Custom prices affect local cost estimates only. Cloud account views and leaderboards keep their server-side prices.",,active
+settings.model_pricing.add,ui,SettingsPage,PricingSection,add,"Add custom price",,active
+settings.model_pricing.search,ui,SettingsPage,PricingSection,search,"Search",,active
+settings.model_pricing.search_label,ui,SettingsPage,PricingSection,search_label,"Search model prices",,active
+settings.model_pricing.search_placeholder,ui,SettingsPage,PricingSection,search_placeholder,"Search model or provider",,active
+settings.model_pricing.all,ui,SettingsPage,PricingSection,all,"All prices",,active
+settings.model_pricing.custom_only,ui,SettingsPage,PricingSection,custom_only,"Custom only",,active
+settings.model_pricing.model,ui,SettingsPage,PricingSection,model,"Model ID",,active
+settings.model_pricing.model_placeholder,ui,SettingsPage,PricingSection,model_placeholder,"provider/model-name",,active
+settings.model_pricing.provider,ui,SettingsPage,PricingSection,provider,"Provider",,active
+settings.model_pricing.provider_optional,ui,SettingsPage,PricingSection,provider_optional,"Provider (optional)",,active
+settings.model_pricing.provider_placeholder,ui,SettingsPage,PricingSection,provider_placeholder,"Leave blank for all providers",,active
+settings.model_pricing.input,ui,SettingsPage,PricingSection,input,"Input",,active
+settings.model_pricing.output,ui,SettingsPage,PricingSection,output,"Output",,active
+settings.model_pricing.cache_read,ui,SettingsPage,PricingSection,cache_read,"Cache read",,active
+settings.model_pricing.cache_write,ui,SettingsPage,PricingSection,cache_write,"Cache write",,active
+settings.model_pricing.price_source,ui,SettingsPage,PricingSection,price_source,"Price source",,active
+settings.model_pricing.actions,ui,SettingsPage,PricingSection,actions,"Actions",,active
+settings.model_pricing.all_providers,ui,SettingsPage,PricingSection,all_providers,"All providers",,active
+settings.model_pricing.origin.custom,ui,SettingsPage,PricingSection,origin_custom,"Custom",,active
+settings.model_pricing.origin.curated,ui,SettingsPage,PricingSection,origin_curated,"Built-in",,active
+settings.model_pricing.origin.litellm,ui,SettingsPage,PricingSection,origin_litellm,"LiteLLM",,active
+settings.model_pricing.origin.other,ui,SettingsPage,PricingSection,origin_other,"Other",,active
+settings.model_pricing.edit,ui,SettingsPage,PricingSection,edit,"Edit price",,active
+settings.model_pricing.save,ui,SettingsPage,PricingSection,save,"Save price",,active
+settings.model_pricing.saving,ui,SettingsPage,PricingSection,saving,"Saving…",,active
+settings.model_pricing.cancel,ui,SettingsPage,PricingSection,cancel,"Cancel",,active
+settings.model_pricing.saved,ui,SettingsPage,PricingSection,saved,"Custom price saved.",,active
+settings.model_pricing.restore_default,ui,SettingsPage,PricingSection,restore_default,"Restore default",,active
+settings.model_pricing.confirm_restore,ui,SettingsPage,PricingSection,confirm_restore,"Confirm restore",,active
+settings.model_pricing.restored,ui,SettingsPage,PricingSection,restored,"Default price restored.",,active
+settings.model_pricing.loading,ui,SettingsPage,PricingSection,loading,"Loading model prices…",,active
+settings.model_pricing.empty,ui,SettingsPage,PricingSection,empty,"No model prices match this filter.",,active
+settings.model_pricing.previous,ui,SettingsPage,PricingSection,previous,"Previous",,active
+settings.model_pricing.next,ui,SettingsPage,PricingSection,next,"Next",,active
+settings.model_pricing.page_status,ui,SettingsPage,PricingSection,page_status,"{{from}}–{{to}} of {{total}}",,active
+settings.model_pricing.storage_error,ui,SettingsPage,PricingSection,storage_error,"The saved custom-price file could not be read: {{error}}. Saving will back up the damaged file before replacing it.",,active
+settings.model_pricing.error.model,ui,SettingsPage,PricingSection,error_model,"Enter a model ID.",,active
+settings.model_pricing.error.source,ui,SettingsPage,PricingSection,error_source,"Enter a valid provider ID using letters, numbers, dots, underscores, or hyphens.",,active
+settings.model_pricing.error.rate,ui,SettingsPage,PricingSection,error_rate,"{{field}} must be a finite number between 0 and 1,000,000,000.",,active
 settings.limits.providers,ui,SettingsPage,SettingsPage,limits_providers,"Providers",,active
 settings.limits.showSubscriptions,ui,SettingsPage,SettingsPage,show_subscriptions,"Show subscriptions in limits",,active
 settings.limits.showSubscriptionsHint,ui,SettingsPage,SettingsPage,show_subscriptions_hint,"Display your manual subscription renewal bars alongside the limits.",,active

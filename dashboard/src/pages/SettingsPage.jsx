@@ -1,5 +1,5 @@
 import React from "react";
-import { Cloud, FlaskConical, Gauge, Globe, Monitor, Palette, Settings, UserRound } from "lucide-react";
+import { CircleDollarSign, Cloud, FlaskConical, Gauge, Globe, Monitor, Palette, Settings, UserRound } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { LimitsSettingsPanel } from "../components/LimitsSettingsPanel.jsx";
 import { AccountSection } from "../components/settings/AccountSection.jsx";
@@ -15,11 +15,13 @@ import {
 } from "../components/settings/Controls.jsx";
 import { MenuBarSection, NativeAppFooter } from "../components/settings/MenuBarSection.jsx";
 import { NetworkSection } from "../components/settings/NetworkSection.jsx";
+import { PricingSection } from "../components/settings/PricingSection.jsx";
 import { LocalDataSection } from "../components/settings/LocalDataSection.jsx";
 import { isLocalDashboardHost } from "../lib/host-mode";
 import { LIMIT_DISPLAY_MODES, useLimitsDisplayPrefs } from "../hooks/use-limits-display-prefs.js";
 import { useNativeSettings } from "../hooks/use-native-settings.js";
 import { useProxySettings } from "../hooks/use-proxy-settings.js";
+import { useModelPricingSettings } from "../hooks/use-model-pricing-settings.js";
 import { cn } from "../lib/cn";
 import { copy } from "../lib/copy";
 import { isNativeWindowsApp } from "../lib/native-bridge.js";
@@ -29,6 +31,7 @@ const SETTINGS_SECTION_IDS = {
   APPEARANCE: "appearance",
   NATIVE_APP: "native-app",
   NETWORK: "network",
+  MODEL_PRICING: "model-pricing",
   LOCAL_DATA: "local-data",
   ACCOUNT: "account",
   CLOUD: "cloud",
@@ -65,6 +68,7 @@ export function SettingsPage() {
   } = useNativeSettings();
   const proxySettings = useProxySettings();
   const { available: proxySettingsAvailable } = proxySettings;
+  const { available: modelPricingAvailable } = useModelPricingSettings();
   const toastOnReset = nativeSettings?.toastOnReset !== false;
   const confettiOnReset = nativeSettings?.confettiOnReset !== false;
   const windowsNativeSettings =
@@ -76,6 +80,7 @@ export function SettingsPage() {
     Object.values(SETTINGS_SECTION_IDS).includes(requestedSection) &&
     (requestedSection !== SETTINGS_SECTION_IDS.NATIVE_APP || nativeSettingsAvailable) &&
     (requestedSection !== SETTINGS_SECTION_IDS.NETWORK || proxySettingsAvailable) &&
+    (requestedSection !== SETTINGS_SECTION_IDS.MODEL_PRICING || modelPricingAvailable) &&
     (requestedSection !== SETTINGS_SECTION_IDS.LOCAL_DATA || isLocalDashboardHost());
   const activeSection = requestedSectionAvailable
     ? requestedSection
@@ -118,6 +123,16 @@ export function SettingsPage() {
           group: SETTINGS_GROUP_IDS.APP,
           Icon: Globe,
           content: <NetworkSection proxySettings={proxySettings} />,
+        }]
+      : []),
+    ...(modelPricingAvailable
+      ? [{
+          id: SETTINGS_SECTION_IDS.MODEL_PRICING,
+          label: copy("settings.section.model_pricing"),
+          description: copy("settings.section.model_pricing.description"),
+          group: SETTINGS_GROUP_IDS.APP,
+          Icon: CircleDollarSign,
+          content: <PricingSection active={activeSection === SETTINGS_SECTION_IDS.MODEL_PRICING} />,
         }]
       : []),
     {

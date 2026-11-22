@@ -1269,12 +1269,15 @@ function localDataApiPlugin() {
         // Serve the checkout implementation so a stale packaged desktop app (or
         // Windows DoSvc occupying :7680) cannot hide newly supported tool roots.
         const isRepoSkillsApi = url.pathname === "/functions/tokentracker-skills";
+        // Model prices and local overrides evolve with the pricing engine in
+        // this checkout; do not delegate them to an older packaged server.
+        const isRepoModelPricingApi = url.pathname === "/functions/tokentracker-model-pricing";
         // DeepSeek/OpenCode statuses are proxied by this checkout's local API
         // (no public JSON/CORS upstream), so serve them from the current
         // source in dev too.
         const isRepoProviderStatusApi =
           url.pathname === "/api/deepseek-status" || url.pathname === "/api/opencode-status";
-        if (isRepoPetApi || isRepoProjectUsageApi || isRepoSessionAnalyticsApi || isRepoSkillsApi || isRepoProviderStatusApi) {
+        if (isRepoPetApi || isRepoProjectUsageApi || isRepoSessionAnalyticsApi || isRepoSkillsApi || isRepoModelPricingApi || isRepoProviderStatusApi) {
           Promise.resolve(handleRepoLocalApi(req, res, url))
             .then((handled) => { if (!handled) next(); })
             .catch(next);

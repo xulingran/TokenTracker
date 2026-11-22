@@ -277,7 +277,16 @@ function lookupContainedExactCaseInsensitive(table, model) {
   return null;
 }
 
-function lookupPricing(model, { curated, litellm, source } = {}) {
+function lookupUserOverride(table, models) {
+  for (const candidate of models) {
+    if (!candidate) continue;
+    const value = lookupExactCaseInsensitive(table, candidate);
+    if (value) return value;
+  }
+  return null;
+}
+
+function lookupPricing(model, { curated, litellm, source, overrides } = {}) {
   if (!model || typeof model !== "string") {
     return { hit: false, source: "empty", value: null };
   }
@@ -287,9 +296,27 @@ function lookupPricing(model, { curated, litellm, source } = {}) {
   const lower = lookupModel.toLowerCase();
   const dotForm = buildDotRestoredModel(lookupModel);
 
+  // User prices are explicit billing decisions and therefore precede every
+  // automatic rule, including free/unpriced guards. Merge with the automatic
+  // entry so editing the four base rates does not discard speed-tier metadata.
+  const sourceKey = typeof source === "string" ? source.toLowerCase() : "";
+  const overrideModels = [model, lookupModel, dotForm];
+  const userSourceValue = lookupUserOverride(overrides?.source_exact?.[sourceKey], overrideModels);
+  const userExactValue = userSourceValue ? null : lookupUserOverride(overrides?.exact, overrideModels);
+  if (userSourceValue || userExactValue) {
+    const base = lookupPricing(model, { curated, litellm, source });
+    return {
+      hit: true,
+      source: userSourceValue ? "user:source-exact" : "user:exact",
+      value: {
+        ...(base.hit ? base.value : {}),
+        ...(userSourceValue || userExactValue),
+      },
+    };
+  }
+
   // 0. CURATED source exact. Source-specific prices apply only to their source,
   // preventing collisions with public prices for same-named models from other CLIs.
-  const sourceKey = typeof source === "string" ? source.toLowerCase() : "";
   if (sourceKey === "workbuddy-ai" && lower.trim() === "auto") {
     return { hit: false, source: "miss", value: null };
   }

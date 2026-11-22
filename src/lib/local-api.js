@@ -201,6 +201,8 @@ const {
   ensurePricingLoaded,
   getPricingRevision,
   getModelPricingInfo,
+  applyUserPricingOverrides,
+  listPricingCatalog,
 } = require("./pricing");
 
 const {
@@ -1178,6 +1180,16 @@ function createLocalApiHandler({ queuePath, serverVersion = null, trackerDataDir
   let relayCookies = new Map();
   const localAuthToken = crypto.randomBytes(24).toString("hex");
   const trackerDataDir = isolatedTrackerDataDir || path.dirname(qp);
+  const pricingOverridesStore = require("./pricing/overrides");
+  let pricingOverridesLoadError = null;
+  const pricingOverridesReady = pricingOverridesStore.listPricingOverrides({ trackerDir: trackerDataDir })
+    .then((items) => {
+      applyUserPricingOverrides(items);
+    })
+    .catch((error) => {
+      pricingOverridesLoadError = error?.message || String(error);
+      applyUserPricingOverrides([]);
+    });
   const cursorLogin = require("./cursor-login").createCursorLogin({ trackerDir: trackerDataDir });
   const cookiePath = path.join(trackerDataDir, "relay-cookies.json");
   const localSyncDeviceTokenStore = createCloudDeviceTokenStore(path.join(trackerDataDir, "cloud-device-token.json"));
@@ -1884,6 +1896,7 @@ function createLocalApiHandler({ queuePath, serverVersion = null, trackerDataDir
   };
 
   return async function handleLocalApi(req, res, url) {
+    await pricingOverridesReady;
     const p = url.pathname;
     if (p === "/api/deepseek-status") return relayProviderStatus("deepseek", "DeepSeek")(req, res);
     if (p === "/api/opencode-status") return relayProviderStatus("opencode", "OpenCode")(req, res);
@@ -3560,6 +3573,63 @@ function createLocalApiHandler({ queuePath, serverVersion = null, trackerDataDir
         setCloudSyncPref(body.enabled, body.changedAtMs ?? Date.now());
         json(res, { ok: true, enabled: getCloudSyncPref() });
         return true;
+      }
+      json(res, { error: "Method Not Allowed" }, 405);
+      return true;
+    }
+
+    // --- model pricing catalog and user overrides ---
+    // Reads expose only public model rates. Mutations require local-auth and
+    // persist separately from config.json so pricing writes cannot race proxy,
+    // telemetry, or cloud-device config updates.
+    if (p === "/functions/tokentracker-model-pricing") {
+      const method = String(req.method || "GET").toUpperCase();
+      if (method === "GET") {
+        json(res, {
+          ...listPricingCatalog({
+            q: url.searchParams.get("q") || "",
+            source: url.searchParams.get("source") || "",
+            origin: url.searchParams.get("origin") || "",
+            limit: url.searchParams.get("limit") || 100,
+            offset: url.searchParams.get("offset") || 0,
+          }),
+          storage_error: pricingOverridesLoadError,
+        });
+        return true;
+      }
+      if (method === "POST") {
+        if (!isAuthorizedLocalMutation(req)) {
+          json(res, { ok: false, error: "Unauthorized" }, 401);
+          return true;
+        }
+        try {
+          const body = await readJsonBody(req);
+          if (body?.action === "set") {
+            const override = await pricingOverridesStore.setPricingOverride({
+              trackerDir: trackerDataDir,
+              fields: body.override || body,
+              onCommitted: applyUserPricingOverrides,
+            });
+            pricingOverridesLoadError = null;
+            json(res, { ok: true, override, revision: getPricingRevision() });
+            return true;
+          }
+          if (body?.action === "delete") {
+            const result = await pricingOverridesStore.deletePricingOverride({
+              trackerDir: trackerDataDir,
+              fields: body.override || body,
+              onCommitted: applyUserPricingOverrides,
+            });
+            pricingOverridesLoadError = null;
+            json(res, { ok: true, ...result, revision: getPricingRevision() });
+            return true;
+          }
+          json(res, { ok: false, error: "Unknown model-pricing action" }, 400);
+          return true;
+        } catch (error) {
+          json(res, { ok: false, error: error?.message || "Model pricing operation failed" }, 400);
+          return true;
+        }
       }
       json(res, { error: "Method Not Allowed" }, 405);
       return true;
