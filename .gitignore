@@ -4,6 +4,12 @@ node_modules/
 # matches directories, which let two self-referential symlinks get committed.
 node_modules
 dist/
+# Self-host / LAN release bundles assembled locally (dist-nas-portable/,
+# dist-macos-arm64/, …): hundreds of MB of packaged output, never commit.
+dist-*/
+# Release zips written to the repo root by the Windows publish step
+# (release-windows.yml uses Compress-Archive with a root-relative path).
+/TokenTracker-*-*.zip
 build/
 .tmp/
 dashboard/tmp/
@@ -42,6 +48,7 @@ TokenTrackerBar/*.xcarchive
 # AI / IDE tooling (created locally by assistants)
 .agent/
 .agents/
+.video_agent/
 .reviews/
 
 .claude/
