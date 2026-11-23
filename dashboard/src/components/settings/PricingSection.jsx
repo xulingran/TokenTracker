@@ -277,11 +277,21 @@ export function PricingSection({ active = true }) {
         {status ? <p role="status" className="py-3 text-xs text-emerald-600 dark:text-emerald-400">{status}</p> : null}
 
         <div className="overflow-x-auto py-2">
-          <table className="w-full min-w-[760px] border-collapse text-left text-xs">
+          <table className="w-full min-w-[680px] border-collapse text-left text-xs md:min-w-0 md:table-fixed">
+            <colgroup>
+              <col className="md:w-[27%]" />
+              <col className="md:w-[11%]" />
+              <col className="md:w-[8%]" />
+              <col className="md:w-[8%]" />
+              <col className="md:w-[8%]" />
+              <col className="md:w-[8%]" />
+              <col className="md:w-[12%]" />
+              <col className="md:w-[18%]" />
+            </colgroup>
             <thead>
               <tr className="border-b border-oai-gray-200 text-oai-gray-500 dark:border-oai-gray-800 dark:text-oai-gray-400">
                 {["model", "provider", "input", "output", "cache_read", "cache_write", "price_source", "actions"].map((field) => (
-                  <th key={field} scope="col" className="px-2 py-2 font-medium">{copy(`settings.model_pricing.${field}`)}</th>
+                  <th key={field} scope="col" className={`px-2 py-2 font-medium ${RATE_FIELDS.includes(field) ? "whitespace-nowrap md:px-1" : ""}`}>{copy(`settings.model_pricing.${field}`)}</th>
                 ))}
               </tr>
             </thead>
@@ -291,18 +301,18 @@ export function PricingSection({ active = true }) {
                 const resettable = item.overridden && hasOwnOverride(item);
                 return (
                   <tr key={key} className="border-b border-oai-gray-100 last:border-0 dark:border-oai-gray-800/70">
-                    <td className="max-w-56 px-2 py-3 font-mono text-oai-gray-900 dark:text-oai-gray-200">
+                    <td className="px-2 py-3 font-mono text-oai-gray-900 dark:text-oai-gray-200">
                       <span className="break-all">{item.model}</span>
                     </td>
-                    <td className="px-2 py-3 text-oai-gray-500 dark:text-oai-gray-400">{item.source || copy("settings.model_pricing.all_providers")}</td>
-                    {RATE_FIELDS.map((field) => <td key={field} className="px-2 py-3 tabular-nums text-oai-gray-700 dark:text-oai-gray-300">{formatRate(item[field])}</td>)}
+                    <td className="break-words px-2 py-3 text-oai-gray-500 dark:text-oai-gray-400">{item.source || copy("settings.model_pricing.all_providers")}</td>
+                    {RATE_FIELDS.map((field) => <td key={field} className="break-all px-2 py-3 tabular-nums text-oai-gray-700 dark:text-oai-gray-300 md:px-1">{formatRate(item[field])}</td>)}
                     <td className="px-2 py-3">
-                      <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-medium ${item.overridden ? "bg-oai-brand-50 text-oai-brand-700 dark:bg-oai-brand-950 dark:text-oai-brand-300" : "bg-oai-gray-100 text-oai-gray-600 dark:bg-oai-gray-800 dark:text-oai-gray-300"}`}>
+                      <span className={`inline-flex whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] font-medium ${item.overridden ? "bg-oai-brand-50 text-oai-brand-700 dark:bg-oai-brand-950 dark:text-oai-brand-300" : "bg-oai-gray-100 text-oai-gray-600 dark:bg-oai-gray-800 dark:text-oai-gray-300"}`}>
                         {copy(`settings.model_pricing.origin.${item.origin}`)}
                       </span>
                     </td>
                     <td className="px-2 py-3">
-                      <div className="flex items-center justify-end gap-1">
+                      <div className="flex flex-wrap items-center justify-end gap-1">
                         <Button type="button" variant="ghost" size="sm" className="!h-7 !w-7 !p-0" onClick={() => openEditor(item)} aria-label={`${copy("settings.model_pricing.edit")} ${item.model}`} title={copy("settings.model_pricing.edit")}>
                           <Pencil className="h-3.5 w-3.5" aria-hidden />
                         </Button>

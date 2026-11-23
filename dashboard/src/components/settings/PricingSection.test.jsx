@@ -65,6 +65,15 @@ describe("PricingSection", () => {
     expect(screen.getByText("settings.model_pricing.origin.curated")).toBeInTheDocument();
   });
 
+  it("fits the desktop table to its container instead of forcing the actions off-screen", async () => {
+    const { container } = render(<PricingSection active />);
+    await screen.findByText("claude-opus-5-5");
+
+    expect(screen.getByRole("table")).toHaveClass("md:table-fixed", "md:min-w-0");
+    expect(screen.getByRole("table")).not.toHaveClass("min-w-[760px]");
+    expect(container.querySelectorAll("colgroup col")).toHaveLength(8);
+  });
+
   it("edits a model with numeric rates and reloads after saving", async () => {
     const user = userEvent.setup();
     render(<PricingSection active />);
